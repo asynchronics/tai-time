@@ -1,0 +1,34 @@
+[package]
+name = "tai-time"
+# When incrementing version and releasing to crates.io:
+# - Update crate version in README.md
+# - Update CHANGELOG.md
+# - Update if necessary copyright notice in LICENSE-MIT
+# - Create a "vX.Y.Z" git tag
+version = "0.1.0-pre"
+authors = ["Serge Barral <serge.barral@asynchronics.com>"]
+edition = "2021"
+rust-version = "1.64"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/asynchronics/tai-time"
+readme = "README.md"
+description = """
+Nanosecond-precision monotonic clock timestamps based on the TAI time standard.
+"""
+categories = ["date-and-time", "no-std", "science", "embedded"]
+keywords = ["date", "time", "monotonic", "tai", "gps", "gst"]
+
+[dependencies]
+chrono = { version = "0.4.31", default-features = false, optional = true }
+serde = { version = "1", default-features = false, features = ["derive"], optional = true }
+
+[features]
+default = ["std"]
+std = []
+chrono = ["dep:chrono"]
+serde = ["dep:serde"]
+
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
