@@ -24,16 +24,16 @@ number of desirable properties:
 - it is computationally efficient for arithmetic operations involving the
   standard `Duration` type, which uses a very similar internal
   representation,
-- with a 1970 epoch (see `MonotonicTime`), exact conversion to a Unix
-  timestamp is trivial and only requires subtracting from this timestamp the
-  number of leap seconds between TAI and UTC time,
-- with a 1970 epoch, it constitutes a strict 96-bit superset of 80-bit PTP
-  IEEE-1588 timestamps, a widely used standard for high-precision time
-  distribution,
-- with a 1970 epoch, it is substantially similar (though not strictly
-  identical) to the [TAI64N] time format,
-- with a custom epoch, it can represent other monotonic clocks such as the
-  Global Position System and the Galileo System Time clocks (see e.g. `GpsTime`,
+- when a 1970 epoch is chosen (see `MonotonicTime`):
+  * exact conversion to a Unix timestamp is trivial and only requires
+    subtracting from this timestamp the number of leap seconds between TAI
+    and UTC time,
+  * it constitutes a strict 96-bit superset of 80-bit PTP IEEE-1588
+    timestamps, a widely used standard for high-precision time distribution,
+  * it is substantially similar (though not strictly identical) to the
+    [TAI64N] time format,
+- with a custom epoch, other monotonic clocks such as the Global Position System
+  and the Galileo System Time clocks can be represented (see `GpsTime`,
   `GstTime`, `Tai1958Time` and `Tai1972Time`).
 
 `MonotonicTime`, an alias for `TaiTime` with an epoch set at 1970-01-01 00:00:00
@@ -56,28 +56,36 @@ tai-time = { git = "https://github.com/asynchronics/tai-time.git" }
 ## Example
 
 ```rust
-use std::time::Duration;
-use tai_time::MonotonicTime;
+use tai_time::{GpsTime, MonotonicTime};
 
-// Set the timestamp to 2009-02-13 23:31:30.987654321 TAI.
-let mut timestamp = MonotonicTime::new(1_234_567_890, 987_654_321);
+// A timestamp dated 2009-02-13 23:31:30.987654321 TAI.
+// (same value as Unix timestamp for 2009-02-13 23:31:30.987654321 UTC).
+let t0 = MonotonicTime::new(1_234_567_890, 987_654_321);
 
-// Increment the timestamp by 123.456s.
-timestamp += Duration::new(123, 456_000_000);
-assert_eq!(timestamp, MonotonicTime::new(1_234_568_014, 443_654_321));
-assert_eq!(timestamp.as_secs(), 1_234_568_014);
-assert_eq!(timestamp.subsec_nanos(), 443_654_321);
+// Current TAI time based on system clock, assuming 37 leap seconds.
+let now = MonotonicTime::now(37).unwrap();
+
+// Elapsed time since timestamp.
+let dt = now.duration_since(t0);
+println!("{}s, {}ns", dt.as_secs(), dt.subsec_nanos());
+
+// Current GPS time.
+let gps_t0: GpsTime = t0.as_tai_time().unwrap();
+println!("{}s, {}ns", gps_t0.as_secs(), gps_t0.subsec_nanos());
 ```
 
 
-## (Intentional) limitations
+# Design choices and limitations
 
-No date-time parsing and formatting facilities are provided, but these can be
-performed using other crates such as [chrono] (see [features
-flags](#other-time-related-crates)). Leap seconds are never automatically
-computed during conversion to/from UTC-based timestamps as this may provide a
-false sense of security and break application code using a version of this
-library anterior to the introduction of new leap seconds.
+Leap seconds are never automatically computed during conversion to/from
+UTC-based timestamps. This is intentional: doing so would give a false sense of
+security and, since leap seconds cannot be predicted far in the future, could
+break application code using a version of this library anterior to the
+introduction of new leap seconds.
+
+At the moment, no date-time parsing and formatting facilities are provided.
+These can be performed using other crates such as [chrono] (see [features
+flags](#support-for-time-related-crates)).
 
 [chrono]: https://crates.io/crates/chrono
 
@@ -87,7 +95,8 @@ library anterior to the introduction of new leap seconds.
 ### Support for `no-std`
 
 By default, this crate enables the `std` feature to access the operating system
-clock, but specifying `default-features = false` makes it `no-std`-compatible.
+clock and allow conversion to/from `time::SystemTime`, but specifying
+`default-features = false` makes it `no-std`-compatible.
 
 ### Support for time-related crates
 
