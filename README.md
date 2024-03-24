@@ -76,7 +76,7 @@ println!("{}s, {}ns", gps_t0.as_secs(), gps_t0.subsec_nanos());
 ```
 
 
-# Design choices and limitations
+## Design choices and limitations
 
 Leap seconds are never automatically computed during conversion to/from
 UTC-based timestamps. This is intentional: doing so would give a false sense of
