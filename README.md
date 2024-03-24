@@ -7,14 +7,14 @@ A nanosecond-precision monotonic clock timestamp based on the TAI time standard.
 
 ## Overview
 
-While Rust's standard library already provides the `Instant` monotonic
-timestamp, its absolute value is opaque. In many scientific and engineering
-applications such as simulations and synchronized systems, monotonic timestamps
-based on absolute time references are required.
+While Rust's standard library already provides the `std::time::Instant`
+monotonic timestamp, its absolute value is opaque. In many scientific and
+engineering applications such as simulations, GNSS and synchronized systems,
+monotonic timestamps based on absolute time references are required.
 
 This crate provides a fairly unopinionated timestamp for such applications with
 a focus on simplicity, adherence to Rust's `std::time` idioms and
-interoperability with the `Duration` type.
+interoperability with the `std::time::Duration` type.
 
 A `TaiTime` timestamp specifies a [TAI] point in time. It is represented as a 64-bit
 signed number of seconds and a positive number of nanoseconds, relative to
@@ -33,8 +33,9 @@ number of desirable properties:
   * it is substantially similar (though not strictly identical) to the
     [TAI64N] time format,
 - with a custom epoch, other monotonic clocks such as the Global Position System
-  and the Galileo System Time clocks can be represented (see `GpsTime`,
-  `GstTime`, `Tai1958Time` and `Tai1972Time`).
+  clock, the Galileo System Time clock and the BeiDou Time clock can be
+  represented (see `GpsTime`, `GstTime`, `BdtTime`, `Tai1958Time` and
+  `Tai1972Time`).
 
 `MonotonicTime`, an alias for `TaiTime` with an epoch set at 1970-01-01 00:00:00
 TAI, is the recommended timestamp choice when no specific epoch is mandated.
@@ -80,11 +81,11 @@ println!("{}s, {}ns", gps_t0.as_secs(), gps_t0.subsec_nanos());
 Leap seconds are never automatically computed during conversion to/from
 UTC-based timestamps. This is intentional: doing so would give a false sense of
 security and, since leap seconds cannot be predicted far in the future, could
-break application code using a version of this library anterior to the
-introduction of new leap seconds.
+break user code using a version of this library anterior to the introduction of
+new leap seconds.
 
-At the moment, no date-time parsing and formatting facilities are provided.
-These can be performed using other crates such as [chrono] (see [features
+At the moment, no date-time parsing or formatting facilities are provided. These
+can be performed using other crates such as [chrono] (see [features
 flags](#support-for-time-related-crates)).
 
 [chrono]: https://crates.io/crates/chrono
