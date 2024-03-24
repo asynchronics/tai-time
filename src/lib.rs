@@ -46,8 +46,8 @@
 //! Leap seconds are never automatically computed during conversion to/from
 //! UTC-based timestamps. This is intentional: doing so would give a false sense
 //! of security and, since leap seconds cannot be predicted far in the future,
-//! could break user code using a version of this library anterior to the
-//! introduction of new leap seconds.
+//! this could unexpectedly break user code using a version of this library
+//! anterior to the introduction of new leap seconds.
 //!
 //! At the moment, no date-time parsing or formatting facilities are provided.
 //! These can be performed using other crates such as [chrono] (see [features
@@ -107,7 +107,7 @@ use core::time::Duration;
 
 const NANOS_PER_SEC: u32 = 1_000_000_000;
 
-/// Recommended [`TaiTime`] alias for the general case, with an epoch set at
+/// Recommended [`TaiTime`] alias for the general case, using an epoch set at
 /// 1970-01-01 00:00:00 TAI.
 ///
 /// The epoch of this timestamp coincides with the PTP epoch as defined by the
@@ -138,7 +138,7 @@ const NANOS_PER_SEC: u32 = 1_000_000_000;
 /// ```
 pub type MonotonicTime = TaiTime<0>;
 
-/// A [`TaiTime`] alias with the Global Positioning System (GPS) epoch.
+/// A [`TaiTime`] alias using the Global Positioning System (GPS) epoch.
 ///
 /// This timestamp is relative to 1980-01-06 00:00:19 TAI (1980-01-06 00:00:00
 /// UTC).
@@ -161,7 +161,7 @@ pub type MonotonicTime = TaiTime<0>;
 /// ```
 pub type GpsTime = TaiTime<315_964_819>;
 
-/// A [`TaiTime`] alias with the Galileo System Time (GST) epoch.
+/// A [`TaiTime`] alias using the Galileo System Time (GST) epoch.
 ///
 /// This timestamp is relative to 1999-08-21 23:59:47 UTC (1999-08-22 00:00:19
 /// TAI).
@@ -184,7 +184,7 @@ pub type GpsTime = TaiTime<315_964_819>;
 /// ```
 pub type GstTime = TaiTime<935_280_019>;
 
-/// A [`TaiTime`] alias with the BeiDou Time (BDT) epoch.
+/// A [`TaiTime`] alias using the BeiDou Time (BDT) epoch.
 ///
 /// This timestamp is relative to 2006-01-01 00:00:00 UTC (2006-01-01 00:00:33
 /// TAI).
@@ -207,7 +207,7 @@ pub type GstTime = TaiTime<935_280_019>;
 /// ```
 pub type BdtTime = TaiTime<1_136_073_633>;
 
-/// A [`TaiTime`] alias with an epoch set at 1958-01-01 00:00:00 TAI.
+/// A [`TaiTime`] alias using an epoch set at 1958-01-01 00:00:00 TAI.
 ///
 /// Timestamps with this epoch are in common use in TAI-based clocks. While most
 /// literature sources consider that this epoch corresponds to 1958-01-01
@@ -234,7 +234,7 @@ pub type BdtTime = TaiTime<1_136_073_633>;
 /// ```
 pub type Tai1958Time = TaiTime<-378_691_200>;
 
-/// A [`TaiTime`] alias with an epoch set at 1972-01-01 00:00:00 TAI.
+/// A [`TaiTime`] alias using an epoch set at 1972-01-01 00:00:00 TAI.
 ///
 /// Timestamps with this epoch are in common use in TAI-based clocks. The epoch
 /// is exactly 10s in the past of 1972-01-01 00:00:00 UTC.
@@ -439,7 +439,7 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
             }
         }
 
-        Err(OutOfRangeError)
+        Err(OutOfRangeError(()))
     }
 
     /// Creates a TAI timestamp from a `SystemTime` timestamp.
@@ -479,7 +479,7 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     ) -> Result<Self, OutOfRangeError> {
         let unix_time = system_time
             .duration_since(std::time::SystemTime::UNIX_EPOCH)
-            .map_err(|_| OutOfRangeError)?;
+            .map_err(|_| OutOfRangeError(()))?;
 
         // Account for the offset between PTP and Unix time as well as for the
         // offset between the PTP epoch and the actual epoch of this `TaiTime`.
@@ -487,7 +487,7 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
             .checked_sub(EPOCH_REF)
             .map(|delta| Self::new(delta, 0))
             .and_then(|timestamp| timestamp.checked_add(unix_time))
-            .ok_or(OutOfRangeError)
+            .ok_or(OutOfRangeError(()))
     }
 
     /// Creates a timestamp from a `chrono::DateTime`.
@@ -541,7 +541,7 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
             return Self::from_unix_timestamp(secs, subsec_nanos, leap_secs);
         }
 
-        Err(OutOfRangeError)
+        Err(OutOfRangeError(()))
     }
 
     /// Returns the number of whole seconds relative to the
@@ -637,7 +637,7 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
             }
         }
 
-        Err(OutOfRangeError)
+        Err(OutOfRangeError(()))
     }
 
     /// Returns a timestamp with a different reference epoch.
@@ -674,7 +674,7 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
             }
         }
 
-        Err(OutOfRangeError)
+        Err(OutOfRangeError(()))
     }
 
     /// Returns a `SystemTime` based on the timestamp.
@@ -718,11 +718,11 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     pub fn to_system_time(&self, leap_secs: i64) -> Result<std::time::SystemTime, OutOfRangeError> {
         let secs: u64 = self
             .to_unix_secs(leap_secs)
-            .and_then(|secs| secs.try_into().map_err(|_| OutOfRangeError))?;
+            .and_then(|secs| secs.try_into().map_err(|_| OutOfRangeError(())))?;
 
         std::time::SystemTime::UNIX_EPOCH
             .checked_add(Duration::new(secs, self.subsec_nanos()))
-            .ok_or(OutOfRangeError)
+            .ok_or(OutOfRangeError(()))
     }
 
     /// Returns a `chrono::DateTime` based on the timestamp.
@@ -767,7 +767,7 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
         leap_secs: i64,
     ) -> Result<chrono::DateTime<chrono::Utc>, OutOfRangeError> {
         self.to_unix_secs(leap_secs).and_then(|secs| {
-            chrono::DateTime::from_timestamp(secs, self.nanos).ok_or(OutOfRangeError)
+            chrono::DateTime::from_timestamp(secs, self.nanos).ok_or(OutOfRangeError(()))
         })
     }
 
@@ -999,7 +999,7 @@ impl<const EPOCH_REF: i64> SubAssign<Duration> for TaiTime<EPOCH_REF> {
 /// [`TaiTime`] is outside the representable range.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct OutOfRangeError;
+pub struct OutOfRangeError(());
 
 impl fmt::Display for OutOfRangeError {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {

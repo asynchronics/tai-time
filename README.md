@@ -80,9 +80,9 @@ println!("{}s, {}ns", gps_t0.as_secs(), gps_t0.subsec_nanos());
 
 Leap seconds are never automatically computed during conversion to/from
 UTC-based timestamps. This is intentional: doing so would give a false sense of
-security and, since leap seconds cannot be predicted far in the future, could
-break user code using a version of this library anterior to the introduction of
-new leap seconds.
+security and, since leap seconds cannot be predicted far in the future, this
+could unexpectedly break user code using a version of this library anterior to
+the introduction of new leap seconds.
 
 At the moment, no date-time parsing or formatting facilities are provided. These
 can be performed using other crates such as [chrono] (see [features
