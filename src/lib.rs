@@ -78,26 +78,28 @@
 //!
 //!
 //! # Examples
-//!
-//! ```
-//! use tai_time::{GpsTime, MonotonicTime};
-//!
-//! // A timestamp dated 2009-02-13 23:31:30.987654321 TAI.
-//! // (same value as Unix timestamp for 2009-02-13 23:31:30.987654321 UTC).
-//! let t0 = MonotonicTime::new(1_234_567_890, 987_654_321);
-//!
-//! // Current TAI time based on system clock, assuming 37 leap seconds.
-//! let now = MonotonicTime::now(37).unwrap();
-//!
-//! // Elapsed time since timestamp.
-//! let dt = now.duration_since(t0);
-//! println!("{}s, {}ns", dt.as_secs(), dt.subsec_nanos());
-//!
-//! // Current GPS time.
-//! let gps_t0: GpsTime = t0.to_tai_time().unwrap();
-//! println!("{}s, {}ns", gps_t0.as_secs(), gps_t0.subsec_nanos());
-//! ```
+#![cfg_attr(
+    feature = "std",
+    doc = r##"
+```
+use tai_time::{GpsTime, MonotonicTime};
 
+// A timestamp dated 2009-02-13 23:31:30.987654321 TAI.
+// (same value as Unix timestamp for 2009-02-13 23:31:30.987654321 UTC).
+let t0 = MonotonicTime::new(1_234_567_890, 987_654_321);
+
+// Current TAI time based on system clock, assuming 37 leap seconds.
+let now = MonotonicTime::now(37).unwrap();
+
+// Elapsed time since timestamp.
+let dt = now.duration_since(t0);
+println!("{}s, {}ns", dt.as_secs(), dt.subsec_nanos());
+
+// Current GPS time.
+let gps_t0: GpsTime = t0.to_tai_time().unwrap();
+println!("{}s, {}ns", gps_t0.as_secs(), gps_t0.subsec_nanos());
+```"##
+)]
 #![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
