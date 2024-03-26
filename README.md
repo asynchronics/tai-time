@@ -2,7 +2,9 @@
 
 A nanosecond-precision monotonic clock timestamp based on the TAI time standard.
 
-[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](https://github.com/asynchronics/diatomic-waker#license)
+[![Cargo](https://img.shields.io/crates/v/multishot.svg)](https://crates.io/crates/tai-time)
+[![Documentation](https://docs.rs/multishot/badge.svg)](https://docs.rs/tai-time)
+[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](https://github.com/asynchronics/tai-time#license)
 
 
 ## Overview
@@ -50,7 +52,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-tai-time = { git = "https://github.com/asynchronics/tai-time.git" }
+tai-time = "0.1"
 ```
 
 
