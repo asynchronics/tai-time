@@ -30,6 +30,27 @@ jobs:
       - name: Run cargo check
         run: cargo check --all-features
 
+  check-no-std:
+    name: Check (no-std)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - armv7-unknown-linux-gnueabihf
+          - thumbv7em-none-eabihf
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v3
+
+      - name: Install toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Run cargo check
+        run: cargo check --target ${{ matrix.target }} --no-default-features
+
   test:
     name: Test suite
     runs-on: ubuntu-latest
