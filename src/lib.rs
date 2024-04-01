@@ -44,17 +44,11 @@
 //! # Design choices and limitations
 //!
 //! Leap seconds are never automatically computed during conversion to/from
-//! UTC-based timestamps. This is intentional: doing so would give a false sense
-//! of security and, since leap seconds cannot be predicted far in the future,
-//! this could unexpectedly break user code using a version of this library
-//! anterior to the introduction of new leap seconds.
-//!
-//! At the moment, no date-time parsing or formatting facilities are provided.
-//! These can be performed using other crates such as [chrono] (see [features
-//! flags](#support-for-time-related-crates)).
-//!
-//!
-//! [chrono]: https://crates.io/crates/chrono
+//! UTC-based timestamps. This is intentional: since leap seconds cannot be
+//! predicted far in the future, any attempt to "hide" their existence from user
+//! code would lend a false sense of security and, down the line, would make it
+//! more difficult to identify failures subsequent to the introduction of new
+//! leap seconds.
 //!
 //!
 //! # Features flags
@@ -62,14 +56,15 @@
 //! ### Support for `no-std`
 //!
 //! By default, this crate enables the `std` feature to access the operating
-//! system clock and allow conversion to/from `time::SystemTime`, but specifying
-//! `default-features = false` makes it `no-std`-compatible.
+//! system clock and allow conversion to/from `time::SystemTime`, but it can be
+//! made `no-std`-compatible by specifying `default-features = false`.
 //!
 //! ### Support for time-related crates
 //!
 //! Conversion methods to and from UTC date-time stamps from the [chrono] crate
-//! are available with the `chrono` feature. This may also be used to parse and
-//! format dates.
+//! are available with the `chrono` feature.
+//!
+//! [chrono]: https://crates.io/crates/chrono
 //!
 //! ### Serialization
 //!
@@ -78,36 +73,62 @@
 //!
 //!
 //! # Examples
-#![cfg_attr(
-    feature = "std",
-    doc = r##"
-```
-use tai_time::{GpsTime, MonotonicTime};
+//!
+//! Basic usage:
+//!
+//! ```
+//! use tai_time::{GpsTime, MonotonicTime};
+//!
+//! // A timestamp dated 2009-02-13 23:31:30.987654321 TAI.
+//! // (same value as Unix timestamp for 2009-02-13 23:31:30.987654321 UTC).
+//! let t0 = MonotonicTime::new(1_234_567_890, 987_654_321);
+//!
+//! // Current TAI time based on system clock, assuming 37 leap seconds.
+//! let now = MonotonicTime::now(37).unwrap();
+//!
+//! // Elapsed time since timestamp.
+//! let dt = now.duration_since(t0);
+//! println!("{}s, {}ns", dt.as_secs(), dt.subsec_nanos());
+//!
+//! // Print out the current GPS date-time stamp.
+//! let gps_t0: GpsTime = t0.to_tai_time().unwrap();
+//! println!("{}", gps_t0);
+//! ```
+//!
+//! Conversion to and from date-time representations:
+//!
+//! ```
+//! use tai_time::{MonotonicTime, Tai1958Time};
+//!
+//! // The `FromStr` implementation accepts date-time stamps with the format:
+//! // [±][Y]...[Y]YYYY-MM-DD hh:mm:ss[.d[d]...[d]]
+//! // or:
+//! // [±][Y]...[Y]YYYY-MM-DD'T'hh:mm:ss[.d[d]...[d]]
+//! let t0 = MonotonicTime::from_date_time(2222, 11, 11, 12, 34, 56, 789000000).unwrap();
+//! assert_eq!("2222-11-11 12:34:56.789".parse(), Ok(t0));
+//!
+//! assert_eq!(
+//!     Tai1958Time::new(0, 123456789).to_string(),
+//!     "1958-01-01 00:00:00.123456789"
+//! );
+//! ```
 
-// A timestamp dated 2009-02-13 23:31:30.987654321 TAI.
-// (same value as Unix timestamp for 2009-02-13 23:31:30.987654321 UTC).
-let t0 = MonotonicTime::new(1_234_567_890, 987_654_321);
-
-// Current TAI time based on system clock, assuming 37 leap seconds.
-let now = MonotonicTime::now(37).unwrap();
-
-// Elapsed time since timestamp.
-let dt = now.duration_since(t0);
-println!("{}s, {}ns", dt.as_secs(), dt.subsec_nanos());
-
-// Current GPS time.
-let gps_t0: GpsTime = t0.to_tai_time().unwrap();
-println!("{}s, {}ns", gps_t0.as_secs(), gps_t0.subsec_nanos());
-```"##
-)]
 #![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
+mod date_time;
+mod errors;
+
 use core::fmt;
 use core::ops::{Add, AddAssign, Sub, SubAssign};
+use core::str::FromStr;
 use core::time::Duration;
 
+use date_time::*;
+pub use errors::{DateTimeError, OutOfRangeError, ParseDateTimeError};
+
 const NANOS_PER_SEC: u32 = 1_000_000_000;
+const UNIX_EPOCH_YEAR: i32 = 1970;
 
 /// Recommended [`TaiTime`] alias for the general case, using an epoch set at
 /// 1970-01-01 00:00:00 TAI.
@@ -125,41 +146,29 @@ const NANOS_PER_SEC: u32 = 1_000_000_000;
 /// # Examples
 ///
 /// ```
-/// use std::time::Duration;
 /// use tai_time::MonotonicTime;
 ///
-/// // Set the timestamp to 2009-02-13 23:31:30.333333333 TAI.
-/// let mut timestamp = MonotonicTime::new(1_234_567_890, 333_333_333);
+/// // Set the timestamp one nanosecond after the 1970 TAI epoch.
+/// let mut timestamp = MonotonicTime::new(0, 1);
 ///
-/// // Increment the timestamp by 123.456s.
-/// timestamp += Duration::new(123, 456_000_000);
-///
-/// assert_eq!(timestamp, MonotonicTime::new(1_234_568_013, 789_333_333));
-/// assert_eq!(timestamp.as_secs(), 1_234_568_013);
-/// assert_eq!(timestamp.subsec_nanos(), 789_333_333);
+/// assert_eq!(timestamp, "1970-01-01 00:00:00.000000001".parse().unwrap());
 /// ```
 pub type MonotonicTime = TaiTime<0>;
 
 /// A [`TaiTime`] alias using the Global Positioning System (GPS) epoch.
 ///
-/// This timestamp is relative to 1980-01-06 00:00:19 TAI (1980-01-06 00:00:00
-/// UTC).
+/// This timestamp is relative to 1980-01-06 00:00:00 UTC (1980-01-06 00:00:19
+/// TAI).
 ///
 /// # Examples
 ///
 /// ```
-/// use std::time::Duration;
 /// use tai_time::GpsTime;
 ///
-/// // Set the timestamp to 2019-02-18 23:31:49.333333333 TAI.
-/// let mut timestamp = GpsTime::new(1_234_567_890, 333_333_333);
+/// // Set the timestamp one nanosecond after the GPS epoch.
+/// let mut timestamp = GpsTime::new(0, 1);
 ///
-/// // Increment the timestamp by 123.456s.
-/// timestamp += Duration::new(123, 456_000_000);
-///
-/// assert_eq!(timestamp, GpsTime::new(1_234_568_013, 789_333_333));
-/// assert_eq!(timestamp.as_secs(), 1_234_568_013);
-/// assert_eq!(timestamp.subsec_nanos(), 789_333_333);
+/// assert_eq!(timestamp, "1980-01-06 00:00:19.000000001".parse().unwrap());
 /// ```
 pub type GpsTime = TaiTime<315_964_819>;
 
@@ -171,18 +180,12 @@ pub type GpsTime = TaiTime<315_964_819>;
 /// # Examples
 ///
 /// ```
-/// use std::time::Duration;
 /// use tai_time::GstTime;
 ///
-/// // Set the timestamp to 2038-10-04 23:31:49.333333333 TAI.
-/// let mut timestamp = GstTime::new(1_234_567_890, 333_333_333);
+/// // Set the timestamp one nanosecond after the GST epoch.
+/// let mut timestamp = GstTime::new(0, 1);
 ///
-/// // Increment the timestamp by 123.456s.
-/// timestamp += Duration::new(123, 456_000_000);
-///
-/// assert_eq!(timestamp, GstTime::new(1_234_568_013, 789_333_333));
-/// assert_eq!(timestamp.as_secs(), 1_234_568_013);
-/// assert_eq!(timestamp.subsec_nanos(), 789_333_333);
+/// assert_eq!(timestamp, "1999-08-22 00:00:19.000000001".parse().unwrap());
 /// ```
 pub type GstTime = TaiTime<935_280_019>;
 
@@ -194,18 +197,12 @@ pub type GstTime = TaiTime<935_280_019>;
 /// # Examples
 ///
 /// ```
-/// use std::time::Duration;
 /// use tai_time::BdtTime;
 ///
-/// // Set the timestamp to 2045-02-13 23:32:03.333333333 TAI.
-/// let mut timestamp = BdtTime::new(1_234_567_890, 333_333_333);
+/// // Set the timestamp one nanosecond after the BDT epoch.
+/// let mut timestamp = BdtTime::new(0, 1);
 ///
-/// // Increment the timestamp by 123.456s.
-/// timestamp += Duration::new(123, 456_000_000);
-///
-/// assert_eq!(timestamp, BdtTime::new(1_234_568_013, 789_333_333));
-/// assert_eq!(timestamp.as_secs(), 1_234_568_013);
-/// assert_eq!(timestamp.subsec_nanos(), 789_333_333);
+/// assert_eq!(timestamp, "2006-01-01 00:00:33.000000001".parse().unwrap());
 /// ```
 pub type BdtTime = TaiTime<1_136_073_633>;
 
@@ -221,18 +218,12 @@ pub type BdtTime = TaiTime<1_136_073_633>;
 /// # Examples
 ///
 /// ```
-/// use std::time::Duration;
 /// use tai_time::Tai1958Time;
 ///
-/// // Set the timestamp to 1997-02-13 23:31:30.333333333 TAI.
-/// let mut timestamp = Tai1958Time::new(1_234_567_890, 333_333_333);
+/// // Set the timestamp one nanosecond after the 1958 TAI epoch.
+/// let mut timestamp = Tai1958Time::new(0, 1);
 ///
-/// // Increment the timestamp by 123.456s.
-/// timestamp += Duration::new(123, 456_000_000);
-///
-/// assert_eq!(timestamp, Tai1958Time::new(1_234_568_013, 789_333_333));
-/// assert_eq!(timestamp.as_secs(), 1_234_568_013);
-/// assert_eq!(timestamp.subsec_nanos(), 789_333_333);
+/// assert_eq!(timestamp, "1958-01-01 00:00:00.000000001".parse().unwrap());
 /// ```
 pub type Tai1958Time = TaiTime<-378_691_200>;
 
@@ -244,18 +235,12 @@ pub type Tai1958Time = TaiTime<-378_691_200>;
 /// # Examples
 ///
 /// ```
-/// use std::time::Duration;
 /// use tai_time::Tai1972Time;
 ///
-/// // Set the timestamp to 2011-02-13 23:31:30.333333333 TAI.
-/// let mut timestamp = Tai1972Time::new(1_234_567_890, 333_333_333);
+/// // Set the timestamp one nanosecond after the 1972 TAI epoch.
+/// let mut timestamp = Tai1972Time::new(0, 1);
 ///
-/// // Increment the timestamp by 123.456s.
-/// timestamp += Duration::new(123, 456_000_000);
-///
-/// assert_eq!(timestamp, Tai1972Time::new(1_234_568_013, 789_333_333));
-/// assert_eq!(timestamp.as_secs(), 1_234_568_013);
-/// assert_eq!(timestamp.subsec_nanos(), 789_333_333);
+/// assert_eq!(timestamp, "1972-01-01 00:00:00.000000001".parse().unwrap());
 /// ```
 pub type Tai1972Time = TaiTime<63_072_000>;
 
@@ -320,10 +305,10 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
         nanos: NANOS_PER_SEC - 1,
     };
 
-    /// Creates a timestamp relative to the epoch.
+    /// Creates a timestamp from its parts.
     ///
-    /// The number of seconds is for dates in the past of the epoch. The number
-    /// of nanoseconds is always positive and always points towards the future.
+    /// The number of seconds is relative to the epoch. The number of
+    /// nanoseconds is always positive and always points towards the future.
     ///
     /// # Panics
     ///
@@ -340,6 +325,10 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     ///
     /// // A timestamp set to 2009-02-13 23:31:30.987654321 TAI.
     /// let timestamp = MonotonicTime::new(1_234_567_890, 987_654_321);
+    ///
+    /// // A timestamp set 0.5s in the past of the epoch.
+    /// let timestamp = MonotonicTime::new(-1, 500_000_000);
+    /// assert_eq!(timestamp, MonotonicTime::EPOCH - Duration::from_millis(500));
     /// ```
     pub const fn new(secs: i64, subsec_nanos: u32) -> Self {
         assert!(
@@ -350,6 +339,77 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
         Self {
             secs,
             nanos: subsec_nanos,
+        }
+    }
+
+    /// Creates a timestamp from a date-time representation.
+    ///
+    /// The first argument is the proleptic Gregorian year. It follows the ISO
+    /// 8601 interpretation of year 0 as year 1 BC. Up to 6-digit years are
+    /// supported, both positive and negative.
+    ///
+    /// Other arguments follow the usual calendar convention, with month and day
+    /// numerals starting at 1.
+    ///
+    /// Note that the proleptic Gregorian calendar extrapolates dates before
+    /// 1582 using the conventional leap year rules, and considers year 0 as a
+    /// leap year. Proleptic Gregorian dates may therefore differ from those of
+    /// the Julian calendar.
+    ///
+    /// Returns an error if any of the arguments is invalid, or if the calculated
+    /// timestamp is outside the representable range.
+    ///
+    /// # Example
+    ///
+    /// (Shown here for `MonotonicTime`, an alias for `TaiTime<0>`)
+    ///
+    /// ```
+    /// use std::time::Duration;
+    /// use tai_time::MonotonicTime;
+    ///
+    /// // A timestamp set to 2009-02-13 23:31:30.987654321 TAI.
+    /// let timestamp = MonotonicTime::from_date_time(2009, 2, 13, 23, 31, 30, 987_654_321);
+    /// assert_eq!(timestamp, Ok(MonotonicTime::new(1_234_567_890, 987_654_321)));
+    /// ```
+    pub const fn from_date_time(
+        year: i32,
+        month: u8,
+        day: u8,
+        hour: u8,
+        min: u8,
+        sec: u8,
+        nano: u32,
+    ) -> Result<Self, DateTimeError> {
+        if month < 1 || month > 12 {
+            return Err(DateTimeError::InvalidMonth(month));
+        }
+        if day < 1 || day > days_in_month(year, month) {
+            return Err(DateTimeError::InvalidDayOfMonth(day));
+        }
+        if hour > 23 {
+            return Err(DateTimeError::InvalidHour(hour));
+        }
+        if min > 59 {
+            return Err(DateTimeError::InvalidMinute(min));
+        }
+        if sec > 59 {
+            return Err(DateTimeError::InvalidSecond(sec));
+        }
+        if nano > NANOS_PER_SEC {
+            return Err(DateTimeError::InvalidNanosecond(nano));
+        }
+
+        let days = days_from_year_0(year) - days_from_year_0(UNIX_EPOCH_YEAR)
+            + day_of_year(year, month, day) as i64;
+
+        // Note that the following cannot overflow since `days` cannot be
+        // greater than approx. ±365.25*2^31.
+        let secs = days * 86400 + hour as i64 * 3600 + min as i64 * 60 + sec as i64;
+
+        if let Some(secs) = secs.checked_sub(EPOCH_REF) {
+            Ok(Self { secs, nanos: nano })
+        } else {
+            Err(DateTimeError::OutOfRange)
         }
     }
 
@@ -546,12 +606,11 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
         Err(OutOfRangeError(()))
     }
 
-    /// Returns the number of whole seconds relative to the
-    /// [`EPOCH`](TaiTime::EPOCH).
+    /// Returns the signed value of the second that is equal or lower than the
+    /// timestamp, relative to the [`EPOCH`](TaiTime::EPOCH).
     ///
-    /// Consistently with the interpretation of seconds and nanoseconds in the
-    /// [`new()`](TaiTime::new) constructor, seconds are always rounded towards
-    /// `-∞`.
+    /// This value is the same as the one that would be provided when
+    /// constructing the timestamp with [`new()`](TaiTime::new).
     ///
     /// # Examples
     ///
@@ -997,20 +1056,64 @@ impl<const EPOCH_REF: i64> SubAssign<Duration> for TaiTime<EPOCH_REF> {
     }
 }
 
-/// The error type returned when the result of a conversion to or from a
-/// [`TaiTime`] is outside the representable range.
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct OutOfRangeError(());
+impl<const EPOCH_REF: i64> FromStr for TaiTime<EPOCH_REF> {
+    type Err = ParseDateTimeError;
 
-impl fmt::Display for OutOfRangeError {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        "timestamp out of representable range".fmt(fmt)
+    /// Parses an RFC3339-like TAI date-time with signed years. Since TAI is
+    /// timezone-independent, time zones and offsets suffixes are invalid.
+    ///
+    /// Expected format:
+    ///
+    /// `[±][Y]...[Y]YYYY-MM-DD hh:mm:ss[.d[d]...[d]]`
+    ///
+    /// or:
+    ///
+    /// `[±][Y]...[Y]YYYY-MM-DD'T'hh:mm:ss[.d[d]...[d]]`
+    ///
+    /// where delimiter `T` between date and time may also be a lowercase `t`.
+    ///
+    /// The year may take any value within `±i32::MAX`.
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let (year, month, day, hour, min, sec, nano) = parse_date_time(s)?;
+
+        Self::from_date_time(year, month, day, hour, min, sec, nano)
+            .map_err(ParseDateTimeError::RangeError)
     }
 }
 
-#[cfg(feature = "std")]
-impl std::error::Error for OutOfRangeError {}
+impl<const EPOCH_REF: i64> fmt::Display for TaiTime<EPOCH_REF> {
+    /// Displays the TAI timestamp as an RFC3339-like date-time.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // We need to use an i128 timestamp as it may otherwise overflow when
+        // translated to year 0.
+        let secs_from_year_0: i128 =
+            self.secs as i128 + EPOCH_REF as i128 + days_from_year_0(1970) as i128 * 86400;
+        let (year, doy, mut sec) = secs_to_date_time(secs_from_year_0);
+        let (month, day) = month_and_day_of_month(year, doy);
+        let hour = sec / 3600;
+        sec -= hour * 3600;
+        let min = sec / 60;
+        sec -= min * 60;
+
+        write!(
+            f,
+            "{}{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+            if year < 0 { "-" } else { "" },
+            year.abs(),
+            month,
+            day,
+            hour,
+            min,
+            sec
+        )?;
+
+        if self.nanos != 0 {
+            write!(f, ".{:09}", self.nanos)?;
+        }
+
+        Ok(())
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -1177,7 +1280,7 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn invalid() {
+    fn invalid_nanoseconds() {
         Tai1958Time::new(123, 1_000_000_000);
     }
 
@@ -1290,5 +1393,191 @@ mod tests {
         let dt = Duration::new(u64::MAX, NANOS_PER_SEC - 1);
 
         let _ = t - dt;
+    }
+
+    #[cfg(feature = "chrono")]
+    #[test]
+    fn date_time_year_count() {
+        // This test relies on `chrono` as the source of truth.
+        use chrono::NaiveDate;
+
+        // Check enough years to cover several 400-year, 100-year, 4-year and
+        // 1-year boundaries, with both negative and positive dates. Check as
+        // well the most extreme dates supported by `chrono`.
+        const TEST_MIN_YEAR: i32 = -801;
+        const TEST_MAX_YEAR: i32 = 801;
+        const CHRONO_MIN_YEAR: i32 = -0x3ffff;
+        const CHRONO_MAX_YEAR: i32 = 0x3fffe;
+
+        // The test abuses `chrono` by using TAI date-time stamps, pretending
+        // they are UTC. This works because `chrono` ignores leap seconds in
+        // arithmetic operations.
+        let gps_chrono_epoch = NaiveDate::from_ymd_opt(1980, 1, 6)
+            .unwrap()
+            .and_hms_opt(0, 0, 19)
+            .unwrap();
+
+        for year in (-TEST_MIN_YEAR..=TEST_MAX_YEAR).chain([CHRONO_MIN_YEAR, CHRONO_MAX_YEAR]) {
+            // Test the beginning of the year.
+            let chrono_date_time = NaiveDate::from_ymd_opt(year, 1, 1)
+                .unwrap()
+                .and_hms_opt(0, 0, 0)
+                .unwrap();
+            let chrono_gps_timestamp = (chrono_date_time - gps_chrono_epoch).num_seconds();
+            let tai_gps_timestamp = GpsTime::from_date_time(year, 1, 1, 0, 0, 0, 0)
+                .unwrap()
+                .as_secs();
+            assert_eq!(tai_gps_timestamp, chrono_gps_timestamp);
+
+            // Test the last second of the year.
+            let chrono_date_time = NaiveDate::from_ymd_opt(year, 12, 31)
+                .unwrap()
+                .and_hms_opt(23, 59, 59)
+                .unwrap();
+            let chrono_gps_timestamp = (chrono_date_time - gps_chrono_epoch).num_seconds();
+            let tai_gps_timestamp = GpsTime::from_date_time(year, 12, 31, 23, 59, 59, 0)
+                .unwrap()
+                .as_secs();
+            assert_eq!(tai_gps_timestamp, chrono_gps_timestamp);
+        }
+    }
+
+    #[cfg(feature = "chrono")]
+    #[test]
+    fn date_time_day_count() {
+        // This test relies on `chrono` as the source of truth.
+        use chrono::{Datelike, NaiveDate};
+
+        // Test arbitrary leap and non-leap years, negative and positive.
+        const TEST_YEARS: [i32; 6] = [-3000, -500, -1, 600, 723, 2400];
+
+        // The test abuses `chrono` by using TAI date-time stamps, pretending
+        // they are UTC. This works because `chrono` ignores leap seconds in
+        // arithmetic operations.
+        let bdt_chrono_epoch = NaiveDate::from_ymd_opt(2006, 1, 1)
+            .unwrap()
+            .and_hms_opt(0, 0, 33)
+            .unwrap();
+
+        for year in TEST_YEARS {
+            let mut chrono_date_time = NaiveDate::from_ymd_opt(year, 1, 1)
+                .unwrap()
+                .and_hms_opt(0, 0, 0)
+                .unwrap();
+
+            while chrono_date_time.year() == year {
+                // Test the beginning of the day.
+                let chrono_bdt_timestamp = (chrono_date_time - bdt_chrono_epoch).num_seconds();
+                let tai_bdt_timestamp = BdtTime::from_date_time(
+                    year,
+                    chrono_date_time.month() as u8,
+                    chrono_date_time.day() as u8,
+                    0,
+                    0,
+                    0,
+                    0,
+                )
+                .unwrap()
+                .as_secs();
+                assert_eq!(tai_bdt_timestamp, chrono_bdt_timestamp);
+
+                // Test the last second of the day.
+                chrono_date_time += Duration::from_secs(86399);
+                let chrono_bdt_timestamp = (chrono_date_time - bdt_chrono_epoch).num_seconds();
+                let tai_bdt_timestamp = BdtTime::from_date_time(
+                    year,
+                    chrono_date_time.month() as u8,
+                    chrono_date_time.day() as u8,
+                    23,
+                    59,
+                    59,
+                    0,
+                )
+                .unwrap()
+                .as_secs();
+                assert_eq!(tai_bdt_timestamp, chrono_bdt_timestamp);
+
+                chrono_date_time += Duration::from_secs(1);
+            }
+        }
+    }
+
+    #[test]
+    fn date_time_second_count() {
+        // Pick an arbitrary day.
+        const TEST_DAY: u8 = 12;
+        const TEST_MONTH: u8 = 3;
+        const TEST_YEAR: i32 = -4567;
+
+        let mut timestamp =
+            Tai1958Time::from_date_time(TEST_YEAR, TEST_MONTH, TEST_DAY, 0, 0, 0, 0)
+                .unwrap()
+                .as_secs();
+
+        for hour in 0..=23 {
+            for min in 0..=59 {
+                for sec in 0..=59 {
+                    let t = Tai1958Time::from_date_time(
+                        TEST_YEAR, TEST_MONTH, TEST_DAY, hour, min, sec, 0,
+                    )
+                    .unwrap();
+                    assert_eq!(t.as_secs(), timestamp);
+                    timestamp += 1;
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn date_time_string_roundtrip() {
+        const TEST_DATES: &[(&str, (i32, u8, u8, u8, u8, u8, u32))] = &[
+            (
+                "-2147483647-01-01 00:00:00",
+                (-2147483647, 1, 1, 0, 0, 0, 0),
+            ),
+            ("-0000-01-01T00:00:00", (0, 1, 1, 0, 0, 0, 0)),
+            (
+                "2000-02-29T12:23:45.000000001",
+                (2000, 2, 29, 12, 23, 45, 1),
+            ),
+            (
+                "+2345-10-11 12:13:14.123",
+                (2345, 10, 11, 12, 13, 14, 123_000_000),
+            ),
+            (
+                "2147483647-12-31 23:59:59.999999999",
+                (2147483647, 12, 31, 23, 59, 59, 999_999_999),
+            ),
+        ];
+
+        for (date_time_str, date_time) in TEST_DATES {
+            let (year, month, day, hour, min, sec, nano) = *date_time;
+
+            let t0: GstTime = date_time_str.parse().unwrap();
+            let t1: GpsTime = t0.to_string().parse().unwrap();
+            assert_eq!(
+                t1,
+                GpsTime::from_date_time(year, month, day, hour, min, sec, nano).unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn date_time_invalid() {
+        const TEST_DATES: &[&str] = &[
+            "123-01-01 00:00:00",
+            "-1500-02-29 00:00:00",
+            "2001-06-31 00:00:00",
+            "1234-01-00 00:00:00",
+            "1234-00-01 00:00:00",
+            "1234-13-01 00:00:00",
+            "5678-09-10 24:00:00",
+            "5678-09-10 00:60:00",
+            "5678-09-10 00:00:60",
+        ];
+
+        for date_time_str in TEST_DATES {
+            assert!(date_time_str.parse::<MonotonicTime>().is_err());
+        }
     }
 }
