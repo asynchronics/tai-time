@@ -66,6 +66,12 @@
 //!
 //! [chrono]: https://crates.io/crates/chrono
 //!
+//! ### Support for the TAI system clock
+//!
+//! On Linux only, it is possible to directly read the TAI time from the system
+//! clock by activating the `tai_clock` feature. Be sure to read about possible
+//! caveats in [`TaiTime::now_from_tai_clock`].
+//!
 //! ### Serialization
 //!
 //! `TaiTime` and related error types can be (de)serialized with `serde` by
@@ -85,14 +91,15 @@
 //!
 //! // Current TAI time based on system clock, assuming 37 leap seconds.
 //! let now = MonotonicTime::now(37).unwrap();
+//! println!("Current TAI time: {}", now);
 //!
 //! // Elapsed time since timestamp.
 //! let dt = now.duration_since(t0);
-//! println!("{}s, {}ns", dt.as_secs(), dt.subsec_nanos());
+//! println!("Elapsed: {}s, {}ns", dt.as_secs(), dt.subsec_nanos());
 //!
-//! // Print out the current GPS date-time stamp.
+//! // Print out the current GPS timestamp.
 //! let gps_t0: GpsTime = t0.to_tai_time().unwrap();
-//! println!("{}", gps_t0);
+//! println!("GPS timestamp: {}s, {}ns", gps_t0.as_secs(), gps_t0.subsec_nanos());
 //! ```
 //!
 //! Conversion to and from date-time representations:
@@ -111,6 +118,17 @@
 //!     Tai1958Time::new(0, 123456789).to_string(),
 //!     "1958-01-01 00:00:00.123456789"
 //! );
+//! ```
+//!
+//! Reading TAI time directly from the system clock (Linux-only, requires
+//! feature `tai_clock`):
+//!
+//! ```
+//! use tai_time::MonotonicTime;
+//!
+//! let now = MonotonicTime::now_from_tai_clock().unwrap();
+//!
+//! println!("Current TAI time: {}", now);
 //! ```
 
 #![cfg_attr(not(feature = "std"), no_std)]
@@ -421,7 +439,7 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     /// The argument is the difference between TAI and UTC time in seconds
     /// (a.k.a. leap seconds) applicable at the date represented by the
     /// timestamp. For reference, this offset has been +37s since 2017-01-01, a
-    /// value which is to remain valid until at least 2024-12-31. See the
+    /// value which is to remain valid until at least 2024-12-28. See the
     /// [official IERS bulletin
     /// C](http://hpiers.obspm.fr/iers/bul/bulc/bulletinc.dat) for leap second
     /// announcements or the [IERS
@@ -433,7 +451,11 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     /// whole 24h period preceding a leap second due to the possible use of the
     /// so-called *leap second smearing* strategy.
     ///
-    /// Returns an error if the timestamp is outside the representable range.
+    /// Returns an error if the timestamp is outside the representable range,
+    /// which in practice is only possible when `EPOCH_REF` is very far from 0
+    /// (this will therefore never fail for `MonotonicTime`, and should not fail
+    /// with the other provided `TaiTime` aliases unless the system clock is
+    /// wrongly set).
     ///
     /// See also: [`from_system_time`](Self::from_system_time).
     ///
@@ -453,12 +475,62 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
         Self::from_system_time(&std::time::SystemTime::now(), leap_secs)
     }
 
+    /// Creates a timestamp from the system TAI clock.
+    ///
+    /// This is currently only supported on Linux.
+    ///
+    /// Note that there are several caveats when using the Linux TAI clock. In
+    /// particular:
+    ///
+    /// 1) on many default-configured Linux systems, the offset between TAI and
+    ///    UTC is arbitrarily set to 0 at boot time, meaning that the normal UTC
+    ///    system clock and the TAI system clocks will return the same value for
+    ///    as long as no new leap second is introduced,
+    /// 2) some systems are configured to perform *leap second smearing* by
+    ///    altering the rate of the system clock over a 24h period so as to
+    ///    avoid the leap second discontinuity; unfortunately, this entirely
+    ///    defeats the purpose of the TAI clock by effectively synchronizing the
+    ///    TAI clock with the (leap-smeared) UTC system clock.
+    ///
+    /// The first issue can be easily remedied, however, by installing `chrony`
+    /// and, if necessary, making sure the `leapsectz` parameter in
+    /// `chrony.conf` is set to `right/UTC`. Alternatively, one can specify the
+    /// `leapfile` path in `ntp.conf` or set the TAI offset directly with a call
+    /// to `adjtimex`/`ntp_adjtime`.
+    ///
+    /// Returns an error if the timestamp is outside the representable range,
+    /// which in practice is only possible if `EPOCH_REF` is very far from 0
+    /// _and_ the system clock is wrongly set. This will never fail for
+    /// `MonotonicTime`.
+    #[cfg(all(feature = "tai_clock", target_os = "linux"))]
+    pub fn now_from_tai_clock() -> Result<Self, OutOfRangeError> {
+        use core::mem::MaybeUninit;
+
+        let mut c_time: MaybeUninit<libc::timespec> = MaybeUninit::uninit();
+        let ret = unsafe { libc::clock_gettime(libc::CLOCK_TAI, c_time.as_mut_ptr()) };
+
+        assert_eq!(ret, 0);
+
+        let res = unsafe { c_time.assume_init() };
+
+        #[allow(clippy::useless_conversion)]
+        let secs: i64 = res.tv_sec.try_into().unwrap();
+        #[allow(clippy::useless_conversion)]
+        let subsec_nanos: u32 = res.tv_nsec.try_into().unwrap();
+
+        // The timestamp _should_ have the same epoch as `MonotonicTime`, i.e.
+        // 1970-01-01 00:00:00 TAI.
+        let t = MonotonicTime::new(secs, subsec_nanos);
+
+        t.to_tai_time()
+    }
+
     /// Creates a TAI timestamp from a Unix timestamp.
     ///
     /// The last argument is the difference between TAI and UTC time in seconds
     /// (a.k.a. leap seconds) applicable at the date represented by the
     /// timestamp. For reference, this offset has been +37s since 2017-01-01, a
-    /// value which is to remain valid until at least 2024-12-31. See the
+    /// value which is to remain valid until at least 2024-12-28. See the
     /// [official IERS bulletin
     /// C](http://hpiers.obspm.fr/iers/bul/bulc/bulletinc.dat) for leap second
     /// announcements or the [IERS
@@ -509,7 +581,7 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     /// The last argument is the difference between TAI and UTC time in seconds
     /// (a.k.a. leap seconds) applicable at the date represented by the
     /// timestamp. For reference, this offset has been +37s since 2017-01-01, a
-    /// value which is to remain valid until at least 2024-12-31. See the
+    /// value which is to remain valid until at least 2024-12-28. See the
     /// [official IERS bulletin
     /// C](http://hpiers.obspm.fr/iers/bul/bulc/bulletinc.dat) for leap second
     /// announcements or the [IERS
@@ -557,7 +629,7 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     /// The argument is the difference between TAI and UTC time in seconds
     /// (a.k.a. leap seconds) applicable at the date represented by the
     /// timestamp. For reference, this offset has been +37s since 2017-01-01, a
-    /// value which is to remain valid until at least 2024-12-31. See the
+    /// value which is to remain valid until at least 2024-12-28. See the
     /// [official IERS bulletin
     /// C](http://hpiers.obspm.fr/iers/bul/bulc/bulletinc.dat) for leap second
     /// announcements or the [IERS
@@ -652,7 +724,7 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     /// The argument is the difference between TAI and UTC time in seconds
     /// (a.k.a. leap seconds) applicable at the date represented by the
     /// timestamp. For reference, this offset has been +37s since 2017-01-01, a
-    /// value which is to remain valid until at least 2024-12-31. See the
+    /// value which is to remain valid until at least 2024-12-28. See the
     /// [official IERS bulletin
     /// C](http://hpiers.obspm.fr/iers/bul/bulc/bulletinc.dat) for leap second
     /// announcements or the [IERS
@@ -743,7 +815,7 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     /// The argument is the difference between TAI and UTC time in seconds
     /// (a.k.a. leap seconds) applicable at the date represented by the
     /// timestamp. For reference, this offset has been +37s since 2017-01-01, a
-    /// value which is to remain valid until at least 2024-12-31. See the
+    /// value which is to remain valid until at least 2024-12-28. See the
     /// [official IERS bulletin
     /// C](http://hpiers.obspm.fr/iers/bul/bulc/bulletinc.dat) for leap second
     /// announcements or the [IERS
@@ -791,7 +863,7 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     /// The argument is the difference between TAI and UTC time in seconds
     /// (a.k.a. leap seconds) applicable at the date represented by the
     /// timestamp. For reference, this offset has been +37s since 2017-01-01, a
-    /// value which is to remain valid until at least 2024-12-31. See the
+    /// value which is to remain valid until at least 2024-12-28. See the
     /// [official IERS bulletin
     /// C](http://hpiers.obspm.fr/iers/bul/bulc/bulletinc.dat) for leap second
     /// announcements or the [IERS
