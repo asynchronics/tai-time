@@ -21,13 +21,16 @@ keywords = ["date", "time", "monotonic", "tai", "gps"]
 [dependencies]
 chrono = { version = "0.4.31", default-features = false, optional = true }
 serde = { version = "1", default-features = false, features = ["derive"], optional = true }
+libc = { version = "0.2.68", default-features = false, optional = true }
 
 [features]
 default = ["std"]
 std = []
+# Note that the MSRV cannot be guaranteed when the following features are
+# activated since cargo resolver v2 ignores MSRV.
 chrono = ["dep:chrono"]
 serde = ["dep:serde"]
-
+tai_clock = ["dep:libc"]
 
 [package.metadata.docs.rs]
 all-features = true
