@@ -1,3 +1,11 @@
+# (UNRELEASED)
+
+* Add `TaiClock`, a monotonic clock that can generate TAI timestamps on all
+  systems where `std` is available ([#8]).
+
+[#8]: https://github.com/asynchronics/tai-time/pull/8
+
+
 # 0.2.0 (2024-04-03)
 
 * Enable construction of timestamps from a date-time representation and
