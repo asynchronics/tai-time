@@ -58,6 +58,7 @@ pub type Tai1972Clock = TaiClock<{ Tai1972Time::EPOCH_REF }>;
 /// println!("thread 1 has completed at {} TAI", t1);
 /// println!("thread 2 has completed at {} TAI", t2);
 /// ```
+#[derive(Copy, Clone, Debug, Hash)]
 pub struct TaiClock<const EPOCH_REF: i64> {
     timestamp_ref: TaiTime<EPOCH_REF>,
     instant_ref: Instant,

@@ -309,7 +309,7 @@ pub type Tai1972Time = TaiTime<63_072_000>;
 /// assert_eq!(timestamp.as_secs(), 1_234_568_013);
 /// assert_eq!(timestamp.subsec_nanos(), 789_333_333);
 /// ```
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TaiTime<const EPOCH_REF: i64> {
     /// The number of whole seconds in the future (if positive) or in the past
