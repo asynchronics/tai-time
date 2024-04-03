@@ -1,4 +1,4 @@
-# (UNRELEASED)
+# 0.2.1 (2024-04-03)
 
 * Add `TaiClock`, a monotonic clock that can generate TAI timestamps on all
   systems where `std` is available ([#8]).
