@@ -37,6 +37,11 @@
 //! 00:00:00 TAI, is the recommended timestamp choice when no specific epoch is
 //! mandated.
 //!
+//! On platforms that support it (currently, only Linux), the TAI system clock
+//! time can be retrieved with [`TaiTime::now`]. Alternatively, on all systems
+//! that support `std`, [`TaiClock`] can generate TAI timestamps based on the
+//! monotonic system clock.
+//!
 //! [TAI]: https://en.wikipedia.org/wiki/International_Atomic_Time
 //! [TAI64N]: https://cr.yp.to/libtai/tai64.html
 //!
@@ -83,23 +88,28 @@
 //! Basic usage:
 //!
 //! ```
-//! use tai_time::{GpsTime, MonotonicTime};
+//! use tai_time::{GpsTime, MonotonicClock, MonotonicTime};
 //!
 //! // A timestamp dated 2009-02-13 23:31:30.987654321 TAI.
 //! // (same value as Unix timestamp for 2009-02-13 23:31:30.987654321 UTC).
 //! let t0 = MonotonicTime::new(1_234_567_890, 987_654_321);
 //!
 //! // Current TAI time based on the system clock, assuming 37 leap seconds.
-//! let now = MonotonicTime::now_from_utc(37);
-//! println!("Current TAI time: {}", now);
+//! let clock = MonotonicClock::init_from_utc(37);
+//! let t1 = clock.now();
+//! println!("Current TAI time: {}", t1);
 //!
-//! // Elapsed time since timestamp.
-//! let dt = now.duration_since(t0);
+//! // Elapsed time between `t0` and `t1`.
+//! let dt = t1.duration_since(t0);
+//! println!("t1 -t0: {}s, {}ns", dt.as_secs(), dt.subsec_nanos());
+//!
+//! // Elapsed time since `t1`.
+//! let dt = clock.now().duration_since(t1);
 //! println!("Elapsed: {}s, {}ns", dt.as_secs(), dt.subsec_nanos());
 //!
-//! // Print out the current GPS timestamp.
-//! let gps_t0: GpsTime = t0.to_tai_time();
-//! println!("GPS timestamp: {}s, {}ns", gps_t0.as_secs(), gps_t0.subsec_nanos());
+//! // Print out `t1` as a GPS timestamp.
+//! let gps_t1: GpsTime = t1.to_tai_time();
+//! println!("GPS timestamp: {}s, {}ns", gps_t1.as_secs(), gps_t1.subsec_nanos());
 //! ```
 //!
 //! Conversion to and from date-time representations:
@@ -136,6 +146,8 @@
 
 mod date_time;
 mod errors;
+#[cfg(feature = "std")]
+mod tai_clock;
 
 use core::fmt;
 use core::ops::{Add, AddAssign, Sub, SubAssign};
@@ -144,6 +156,8 @@ use core::time::Duration;
 
 use date_time::*;
 pub use errors::{DateTimeError, OutOfRangeError, ParseDateTimeError};
+#[cfg(feature = "std")]
+pub use tai_clock::*;
 
 const NANOS_PER_SEC: u32 = 1_000_000_000;
 const UNIX_EPOCH_YEAR: i32 = 1970;
@@ -271,6 +285,9 @@ pub type Tai1972Time = TaiTime<63_072_000>;
 /// `EPOCH_REF` defines the epoch via its signed distance in seconds from
 /// 1970-01-01 00:00:00 TAI.
 ///
+/// See also: [`MonotonicTime`], [`GpsTime`], [`GstTime`], [`BdtTime`],
+/// [`Tai1958Time`] and [`Tai1972Time`].
+///
 /// [TAI]: https://en.wikipedia.org/wiki/International_Atomic_Time
 ///
 /// # Examples
@@ -308,6 +325,11 @@ pub struct TaiTime<const EPOCH_REF: i64> {
 }
 
 impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
+    /// Associated constant making it possible to retrieve `EPOCH_REF` from a
+    /// `TaiTime` type alias (used by `TaiClock`).
+    #[cfg(feature = "std")]
+    const EPOCH_REF: i64 = EPOCH_REF;
+
     /// The reference epoch, which by definition is always a null timestamp.
     pub const EPOCH: Self = Self { secs: 0, nanos: 0 };
 
