@@ -67,7 +67,7 @@ use tai_time::{GpsTime, MonotonicTime};
 // (same value as Unix timestamp for 2009-02-13 23:31:30.987654321 UTC).
 let t0 = MonotonicTime::new(1_234_567_890, 987_654_321);
 
-//! // Current TAI time based on the system clock, assuming 37 leap seconds.
+// Current TAI time based on the system clock, assuming 37 leap seconds.
 let now = MonotonicTime::now_from_utc(37);
 println!("Current TAI time: {}", now);
 
