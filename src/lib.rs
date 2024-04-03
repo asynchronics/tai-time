@@ -56,8 +56,8 @@
 //! ### Support for `no-std`
 //!
 //! By default, this crate enables the `std` feature to access the operating
-//! system clock and allow conversion to/from `time::SystemTime`, but it can be
-//! made `no-std`-compatible by specifying `default-features = false`.
+//! system clock and allow conversion to/from `time::SystemTime`. It can be made
+//! `no-std`-compatible by specifying `default-features = false`.
 //!
 //! ### Support for time-related crates
 //!
@@ -66,11 +66,11 @@
 //!
 //! [chrono]: https://crates.io/crates/chrono
 //!
-//! ### Support for the TAI system clock
+//! ### TAI system clock
 //!
-//! On Linux only, it is possible to directly read the TAI time from the system
-//! clock by activating the `tai_clock` feature. Be sure to read about possible
-//! caveats in [`TaiTime::now_from_tai_clock`].
+//! On Linux only, it is possible to read TAI time from the system clock by
+//! activating the `tai_clock` feature. Be sure to read about possible caveats
+//! in [`TaiTime::now`].
 //!
 //! ### Serialization
 //!
@@ -89,8 +89,8 @@
 //! // (same value as Unix timestamp for 2009-02-13 23:31:30.987654321 UTC).
 //! let t0 = MonotonicTime::new(1_234_567_890, 987_654_321);
 //!
-//! // Current TAI time based on system clock, assuming 37 leap seconds.
-//! let now = MonotonicTime::now(37).unwrap();
+//! // Current TAI time based on the system clock, assuming 37 leap seconds.
+//! let now = MonotonicTime::now_from_utc(37);
 //! println!("Current TAI time: {}", now);
 //!
 //! // Elapsed time since timestamp.
@@ -98,7 +98,7 @@
 //! println!("Elapsed: {}s, {}ns", dt.as_secs(), dt.subsec_nanos());
 //!
 //! // Print out the current GPS timestamp.
-//! let gps_t0: GpsTime = t0.to_tai_time().unwrap();
+//! let gps_t0: GpsTime = t0.to_tai_time();
 //! println!("GPS timestamp: {}s, {}ns", gps_t0.as_secs(), gps_t0.subsec_nanos());
 //! ```
 //!
@@ -126,7 +126,7 @@
 //! ```
 //! use tai_time::MonotonicTime;
 //!
-//! let now = MonotonicTime::now_from_tai_clock().unwrap();
+//! let now = MonotonicTime::now();
 //!
 //! println!("Current TAI time: {}", now);
 //! ```
@@ -262,14 +262,14 @@ pub type Tai1958Time = TaiTime<-378_691_200>;
 /// ```
 pub type Tai1972Time = TaiTime<63_072_000>;
 
-/// Nanosecond-precision monotonic clock timestamp parametrized by the epoch.
+/// Nanosecond-precision monotonic clock timestamp parametrized by its epoch.
 ///
 /// A timestamp specifies a [TAI] point in time. It is represented as a 64-bit
-/// signed number of seconds and a positive number of nanoseconds counted with
+/// signed number of seconds and a positive number of nanoseconds, counted with
 /// reference to the epoch specified by the generic parameter.
 ///
-/// The `EPOCH_REF` generic parameter defines the epoch via its signed distance
-/// in seconds from 1970-01-01 00:00:00 TAI.
+/// `EPOCH_REF` defines the epoch via its signed distance in seconds from
+/// 1970-01-01 00:00:00 TAI.
 ///
 /// [TAI]: https://en.wikipedia.org/wiki/International_Atomic_Time
 ///
@@ -360,11 +360,109 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
         }
     }
 
+    /// Creates a timestamp from the TAI system clock.
+    ///
+    /// This is currently only supported on Linux and relies on the
+    /// `clock_gettime` system call with a `CLOCK_TAI` clock ID.
+    ///
+    /// The use of the Linux TAI clock is subject to several caveats, most
+    /// importantly:
+    ///
+    /// 1) on many default-configured Linux systems, the offset between TAI and
+    ///    UTC is arbitrarily set to 0 at boot time, in which case the TAI
+    ///    system clock will actually only differ from UTC time by the number of
+    ///    leap seconds introduced *after* the system was booted (most likely,
+    ///    0),
+    /// 2) some systems are configured to perform *leap second smearing* by
+    ///    altering the rate of the system clock over a 24h period so as to
+    ///    avoid the leap second discontinuity; this entirely defeats the
+    ///    purpose of the TAI clock which becomes effectively synchronized to
+    ///    the (leap-smeared) UTC system clock.
+    ///
+    /// The first issue can be easily remedied, however, by using `chrony` and,
+    /// if necessary, making sure that the `leapsectz` parameter in
+    /// `chrony.conf` is set to `right/UTC`. Alternatively, one can specify the
+    /// `leapfile` path in `ntp.conf` or set the TAI offset directly with a call
+    /// to `adjtimex` or `ntp_adjtime`.
+    ///
+    /// # Panics
+    ///
+    /// While highly improbable, this method will panic on arithmetic overflow.
+    /// This would require the system clock time or `EPOCH_REF` to approach
+    /// `i64::MIN` or `i64::MAX`, which corresponds to approximately ±292
+    /// billion years.
+    #[cfg(all(feature = "tai_clock", target_os = "linux"))]
+    pub fn now() -> Self {
+        use core::mem::MaybeUninit;
+
+        let mut c_time: MaybeUninit<libc::timespec> = MaybeUninit::uninit();
+        let ret = unsafe { libc::clock_gettime(libc::CLOCK_TAI, c_time.as_mut_ptr()) };
+
+        assert_eq!(ret, 0);
+
+        let res = unsafe { c_time.assume_init() };
+
+        #[allow(clippy::useless_conversion)]
+        let secs: i64 = res.tv_sec.try_into().unwrap();
+        #[allow(clippy::useless_conversion)]
+        let subsec_nanos: u32 = res.tv_nsec.try_into().unwrap();
+
+        // The timestamp _should_ have the same epoch as `MonotonicTime`, i.e.
+        // 1970-01-01 00:00:00 TAI.
+        let t = MonotonicTime::new(secs, subsec_nanos);
+
+        t.to_tai_time()
+    }
+
+    /// Creates a timestamp from the UTC system clock.
+    ///
+    /// This is a shorthand for `from_system_time(&SystemTime::now(),
+    /// leap_secs)`.
+    ///
+    /// The argument is the difference between TAI and UTC time in seconds
+    /// (a.k.a. leap seconds) applicable at the date represented by the
+    /// timestamp. For reference, this offset has been +37s since 2017-01-01, a
+    /// value which is to remain valid until at least 2024-12-28. See the
+    /// [official IERS bulletin
+    /// C](http://hpiers.obspm.fr/iers/bul/bulc/bulletinc.dat) for leap second
+    /// announcements or the [IERS
+    /// table](https://hpiers.obspm.fr/iers/bul/bulc/Leap_Second.dat) for
+    /// current and historical values.
+    ///
+    /// Beware that the behavior of the system clock near a leap second
+    /// shouldn't be relied upon, where *near* might actually stand for the
+    /// whole 24h period preceding a leap second due to the possible use of the
+    /// so-called *leap second smearing* strategy.
+    ///
+    /// See also: [`from_system_time`](Self::from_system_time).
+    ///
+    /// # Panics
+    ///
+    /// While highly improbable, this method will panic on arithmetic overflow.
+    /// This would require the system clock time, the `leap_secs` argument, or
+    /// `EPOCH_REF` to approach `i64::MIN` or `i64::MAX`, which corresponds to
+    /// approximately ±292 billion years.
+    ///
+    /// # Examples
+    ///
+    /// (Shown here for `MonotonicTime`, an alias for `TaiTime<0>`)
+    ///
+    /// ```
+    /// use tai_time::MonotonicTime;
+    ///
+    /// // Compute the current timestamp assuming that the current difference
+    /// // between TAI and UTC time is 37s.
+    /// let timestamp = MonotonicTime::now_from_utc(37);
+    /// ```
+    #[cfg(feature = "std")]
+    pub fn now_from_utc(leap_secs: i64) -> Self {
+        Self::from_system_time(&std::time::SystemTime::now(), leap_secs)
+    }
+
     /// Creates a timestamp from a date-time representation.
     ///
     /// The first argument is the proleptic Gregorian year. It follows the ISO
-    /// 8601 interpretation of year 0 as year 1 BC. Up to 6-digit years are
-    /// supported, both positive and negative.
+    /// 8601 interpretation of year 0 as year 1 BC.
     ///
     /// Other arguments follow the usual calendar convention, with month and day
     /// numerals starting at 1.
@@ -374,8 +472,14 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     /// leap year. Proleptic Gregorian dates may therefore differ from those of
     /// the Julian calendar.
     ///
-    /// Returns an error if any of the arguments is invalid, or if the calculated
-    /// timestamp is outside the representable range.
+    /// Returns an error if any of the arguments is invalid, or if the
+    /// calculated timestamp is outside the representable range.
+    ///
+    /// While highly improbable, this method will also return an error on
+    /// arithmetic overflow. This would require `EPOCH_REF` to approach
+    /// `i64::MIN` or `i64::MAX`, which corresponds to approximately ±292
+    /// billion years.
+    ///
     ///
     /// # Example
     ///
@@ -431,100 +535,6 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
         }
     }
 
-    /// Creates a timestamp from the system clock.
-    ///
-    /// This is a shorthand for `from_system_time(&SystemTime::now(),
-    /// leap_secs)`.
-    ///
-    /// The argument is the difference between TAI and UTC time in seconds
-    /// (a.k.a. leap seconds) applicable at the date represented by the
-    /// timestamp. For reference, this offset has been +37s since 2017-01-01, a
-    /// value which is to remain valid until at least 2024-12-28. See the
-    /// [official IERS bulletin
-    /// C](http://hpiers.obspm.fr/iers/bul/bulc/bulletinc.dat) for leap second
-    /// announcements or the [IERS
-    /// table](https://hpiers.obspm.fr/iers/bul/bulc/Leap_Second.dat) for
-    /// current and historical values.
-    ///
-    /// Beware that the behavior of the system clock near a leap second
-    /// shouldn't be relied upon, where *near* might actually stand for the
-    /// whole 24h period preceding a leap second due to the possible use of the
-    /// so-called *leap second smearing* strategy.
-    ///
-    /// Returns an error if the timestamp is outside the representable range,
-    /// which in practice is only possible when `EPOCH_REF` is very far from 0
-    /// (this will therefore never fail for `MonotonicTime`, and should not fail
-    /// with the other provided `TaiTime` aliases unless the system clock is
-    /// wrongly set).
-    ///
-    /// See also: [`from_system_time`](Self::from_system_time).
-    ///
-    /// # Examples
-    ///
-    /// (Shown here for `MonotonicTime`, an alias for `TaiTime<0>`)
-    ///
-    /// ```
-    /// use tai_time::MonotonicTime;
-    ///
-    /// // Compute the current timestamp assuming that the current difference
-    /// // between TAI and UTC time is 37s.
-    /// let timestamp = MonotonicTime::now(37).unwrap();
-    /// ```
-    #[cfg(feature = "std")]
-    pub fn now(leap_secs: i64) -> Result<Self, OutOfRangeError> {
-        Self::from_system_time(&std::time::SystemTime::now(), leap_secs)
-    }
-
-    /// Creates a timestamp from the system TAI clock.
-    ///
-    /// This is currently only supported on Linux.
-    ///
-    /// Note that there are several caveats when using the Linux TAI clock. In
-    /// particular:
-    ///
-    /// 1) on many default-configured Linux systems, the offset between TAI and
-    ///    UTC is arbitrarily set to 0 at boot time, meaning that the normal UTC
-    ///    system clock and the TAI system clocks will return the same value for
-    ///    as long as no new leap second is introduced,
-    /// 2) some systems are configured to perform *leap second smearing* by
-    ///    altering the rate of the system clock over a 24h period so as to
-    ///    avoid the leap second discontinuity; unfortunately, this entirely
-    ///    defeats the purpose of the TAI clock by effectively synchronizing the
-    ///    TAI clock with the (leap-smeared) UTC system clock.
-    ///
-    /// The first issue can be easily remedied, however, by installing `chrony`
-    /// and, if necessary, making sure the `leapsectz` parameter in
-    /// `chrony.conf` is set to `right/UTC`. Alternatively, one can specify the
-    /// `leapfile` path in `ntp.conf` or set the TAI offset directly with a call
-    /// to `adjtimex`/`ntp_adjtime`.
-    ///
-    /// Returns an error if the timestamp is outside the representable range,
-    /// which in practice is only possible if `EPOCH_REF` is very far from 0
-    /// _and_ the system clock is wrongly set. This will never fail for
-    /// `MonotonicTime`.
-    #[cfg(all(feature = "tai_clock", target_os = "linux"))]
-    pub fn now_from_tai_clock() -> Result<Self, OutOfRangeError> {
-        use core::mem::MaybeUninit;
-
-        let mut c_time: MaybeUninit<libc::timespec> = MaybeUninit::uninit();
-        let ret = unsafe { libc::clock_gettime(libc::CLOCK_TAI, c_time.as_mut_ptr()) };
-
-        assert_eq!(ret, 0);
-
-        let res = unsafe { c_time.assume_init() };
-
-        #[allow(clippy::useless_conversion)]
-        let secs: i64 = res.tv_sec.try_into().unwrap();
-        #[allow(clippy::useless_conversion)]
-        let subsec_nanos: u32 = res.tv_nsec.try_into().unwrap();
-
-        // The timestamp _should_ have the same epoch as `MonotonicTime`, i.e.
-        // 1970-01-01 00:00:00 TAI.
-        let t = MonotonicTime::new(secs, subsec_nanos);
-
-        t.to_tai_time()
-    }
-
     /// Creates a TAI timestamp from a Unix timestamp.
     ///
     /// The last argument is the difference between TAI and UTC time in seconds
@@ -540,8 +550,15 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     /// Note that there is no unanimous consensus regarding the conversion
     /// between TAI and Unix timestamps prior to 1972.
     ///
-    /// Returns an error if the timestamp is outside the representable range or
-    /// if the number of nanoseconds is greater than or equal to 1 second.
+    /// # Panics
+    ///
+    /// Panics if the number of nanoseconds is greater than or equal to 1
+    /// second.
+    ///
+    /// While highly improbable, this method will panic on arithmetic overflow.
+    /// This would require the unix timestamp, the `leap_secs` argument or
+    /// `EPOCH_REF` to approach `i64::MIN` or `i64::MAX`, which corresponds to
+    /// approximately ±292 billion years.
     ///
     /// # Examples
     ///
@@ -554,26 +571,25 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     /// // accounting for the +32s difference between UAI and UTC on 2001-09-15.
     /// assert_eq!(
     ///     MonotonicTime::from_unix_timestamp(1_000_530_300, 5_000_000, 32),
-    ///     Ok(MonotonicTime::new(1_000_530_332, 5_000_000))
+    ///     MonotonicTime::new(1_000_530_332, 5_000_000)
     /// );
     /// ```
-    pub const fn from_unix_timestamp(
-        secs: i64,
-        subsec_nanos: u32,
-        leap_secs: i64,
-    ) -> Result<Self, OutOfRangeError> {
+    pub const fn from_unix_timestamp(secs: i64, subsec_nanos: u32, leap_secs: i64) -> Self {
+        assert!(
+            subsec_nanos < NANOS_PER_SEC,
+            "invalid number of nanoseconds"
+        );
+
         if let Some(secs) = secs.checked_add(leap_secs) {
             if let Some(secs) = secs.checked_sub(EPOCH_REF) {
-                if subsec_nanos < NANOS_PER_SEC {
-                    return Ok(Self {
-                        secs,
-                        nanos: subsec_nanos,
-                    });
-                }
+                return Self {
+                    secs,
+                    nanos: subsec_nanos,
+                };
             }
         }
 
-        Err(OutOfRangeError(()))
+        panic!("overflow when converting timestamp");
     }
 
     /// Creates a TAI timestamp from a `SystemTime` timestamp.
@@ -588,7 +604,12 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     /// table](https://hpiers.obspm.fr/iers/bul/bulc/Leap_Second.dat) for
     /// current and historical values.
     ///
-    /// Returns an error if the timestamp is outside the representable range.
+    /// # Panics
+    ///
+    /// While highly improbable, this method will panic on arithmetic overflow.
+    /// This would require the `system_time` argument, the `leap_secs` argument,
+    /// or `EPOCH_REF` to approach `i64::MIN` or `i64::MAX`, which corresponds
+    /// to approximately ±292 billion years.
     ///
     /// # Examples
     ///
@@ -603,25 +624,21 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     /// let system_time = SystemTime::UNIX_EPOCH + Duration::new(1_000_530_300, 5_000_000);
     /// assert_eq!(
     ///     MonotonicTime::from_system_time(&system_time, 32),
-    ///     Ok(MonotonicTime::new(1_000_530_332, 5_000_000))
+    ///     MonotonicTime::new(1_000_530_332, 5_000_000)
     /// );
     /// ```
     #[cfg(feature = "std")]
-    pub fn from_system_time(
-        system_time: &std::time::SystemTime,
-        leap_secs: i64,
-    ) -> Result<Self, OutOfRangeError> {
+    pub fn from_system_time(system_time: &std::time::SystemTime, leap_secs: i64) -> Self {
         let unix_time = system_time
             .duration_since(std::time::SystemTime::UNIX_EPOCH)
-            .map_err(|_| OutOfRangeError(()))?;
+            .unwrap();
 
-        // Account for the offset between PTP and Unix time as well as for the
-        // offset between the PTP epoch and the actual epoch of this `TaiTime`.
-        leap_secs
-            .checked_sub(EPOCH_REF)
-            .map(|delta| Self::new(delta, 0))
-            .and_then(|timestamp| timestamp.checked_add(unix_time))
-            .ok_or(OutOfRangeError(()))
+        Self::new(
+            leap_secs
+                .checked_sub(EPOCH_REF)
+                .expect("overflow when converting timestamp"),
+            0,
+        ) + unix_time
     }
 
     /// Creates a timestamp from a `chrono::DateTime`.
@@ -639,7 +656,12 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     /// While no error will be reported, this method should not be considered
     /// appropriate for timestamps in the past of 1972.
     ///
-    /// Returns an error if the timestamp is outside the representable range.
+    /// # Panics
+    ///
+    /// While highly improbable, this method will panic on arithmetic overflow.
+    /// This would require the `leap_secs` argument or `EPOCH_REF` to approach
+    /// `i64::MIN` or `i64::MAX`, which corresponds to approximately ±292
+    /// billion years.
     ///
     /// # Examples
     ///
@@ -649,17 +671,19 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     /// use tai_time::MonotonicTime;
     /// use chrono::DateTime;
     ///
-    /// let date_time = DateTime::parse_from_rfc3339("2001-09-15T05:05:00.005Z").unwrap();
+    /// let tai_date_time: MonotonicTime = "2001-09-15 05:05:32.005".parse().unwrap();
+    /// let chrono_date_time = DateTime::parse_from_rfc3339("2001-09-15T05:05:00.005Z").unwrap();
+    ///
     /// assert_eq!(
-    ///     MonotonicTime::from_chrono_date_time(&date_time, 32),
-    ///     Ok(MonotonicTime::new(1_000_530_332, 5_000_000))
+    ///     MonotonicTime::from_chrono_date_time(&chrono_date_time, 32),
+    ///     tai_date_time
     /// );
     /// ```
     #[cfg(feature = "chrono")]
     pub const fn from_chrono_date_time<Tz: chrono::TimeZone>(
         date_time: &chrono::DateTime<Tz>,
         leap_secs: i64,
-    ) -> Result<Self, OutOfRangeError> {
+    ) -> Self {
         let secs = date_time.timestamp();
         let subsec_nanos = date_time.timestamp_subsec_nanos();
 
@@ -675,14 +699,14 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
             return Self::from_unix_timestamp(secs, subsec_nanos, leap_secs);
         }
 
-        Err(OutOfRangeError(()))
+        panic!("overflow when converting timestamp");
     }
 
-    /// Returns the signed value of the second that is equal or lower than the
-    /// timestamp, relative to the [`EPOCH`](TaiTime::EPOCH).
+    /// Returns the signed value of the closest second boundary that is equal to
+    /// or lower than the timestamp, relative to the [`EPOCH`](TaiTime::EPOCH).
     ///
-    /// This value is the same as the one that would be provided when
-    /// constructing the timestamp with [`new()`](TaiTime::new).
+    /// This value is the same as the one that would be provided to construct
+    /// the timestamp with [`new()`](TaiTime::new).
     ///
     /// # Examples
     ///
@@ -709,6 +733,8 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     ///
     /// # Examples
     ///
+    /// (Shown here for `MonotonicTime`, an alias for `TaiTime<0>`)
+    ///
     /// ```
     /// use tai_time::MonotonicTime;
     ///
@@ -732,9 +758,8 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     /// current and historical values.
     ///
     /// This method merely subtracts the offset from the value returned by
-    /// [`as_secs()`](Self::as_secs) and checks for potential overflow; its main
-    /// purpose is to prevent mistakes regarding the direction in which the
-    /// offset should be applied.
+    /// [`as_secs()`](Self::as_secs); its main purpose is to prevent mistakes
+    /// regarding the direction in which the offset should be applied.
     ///
     /// The nanosecond part of a Unix timestamp can be simply retrieved with
     /// [`subsec_nanos()`](Self::subsec_nanos) since UTC and TAI differ by a
@@ -743,8 +768,12 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     /// Note that there is no unanimous consensus regarding the conversion
     /// between TAI and Unix timestamps prior to 1972.
     ///
-    /// Returns an error if the offset-adjusted timestamp is outside the
-    /// representable range.
+    /// # Panics
+    ///
+    /// While highly improbable, this method will panic on arithmetic overflow.
+    /// This would require the `leap_secs` argument or `EPOCH_REF` to approach
+    /// `i64::MIN` or `i64::MAX`, which corresponds to approximately ±292
+    /// billion years.
     ///
     /// # Examples
     ///
@@ -760,23 +789,38 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     /// // TAI and UTC on 2000-01-01.
     /// assert_eq!(
     ///     timestamp.to_unix_secs(32),
-    ///     Ok(946_684_768)
+    ///     946_684_768
     /// );
     /// ```
-    pub const fn to_unix_secs(&self, leap_secs: i64) -> Result<i64, OutOfRangeError> {
+    pub const fn to_unix_secs(&self, leap_secs: i64) -> i64 {
+        if let Some(secs) = self.try_to_unix_secs(leap_secs) {
+            return secs;
+        }
+
+        panic!("overflow when converting timestamp");
+    }
+
+    /// Checked variant of `to_unix_secs`.
+    ///
+    /// See also: [`to_unix_secs`](Self::to_unix_secs).
+    const fn try_to_unix_secs(&self, leap_secs: i64) -> Option<i64> {
         if let Some(secs) = self.secs.checked_sub(leap_secs) {
             if let Some(secs) = secs.checked_add(EPOCH_REF) {
-                return Ok(secs);
+                return Some(secs);
             }
         }
 
-        Err(OutOfRangeError(()))
+        None
     }
 
     /// Returns a timestamp with a different reference epoch.
     ///
-    /// Returns an error if the new timestamp is outside the representable
-    /// range.
+    /// # Panics
+    ///
+    /// While highly improbable, this method will panic on arithmetic overflow.
+    /// This would require the original timestamp or `EPOCH_REF` to approach
+    /// `i64::MIN` or `i64::MAX`, which corresponds to approximately ±292
+    /// billion years.
     ///
     /// # Examples
     ///
@@ -789,25 +833,17 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     /// let timestamp = MonotonicTime::new(946_684_800, 0);
     ///
     /// // Convert to a GPS timestamp.
-    /// let gps_timestamp: GpsTime = timestamp.to_tai_time().unwrap();
+    /// let gps_timestamp: GpsTime = timestamp.to_tai_time();
     /// assert_eq!(
     ///     gps_timestamp,
     ///     GpsTime::new(630_719_981, 0)
     /// );
     /// ```
-    pub const fn to_tai_time<const OTHER_EPOCH_REF: i64>(
-        &self,
-    ) -> Result<TaiTime<OTHER_EPOCH_REF>, OutOfRangeError> {
-        if let Some(epoch_diff) = EPOCH_REF.checked_sub(OTHER_EPOCH_REF) {
-            if let Some(secs) = self.secs.checked_add(epoch_diff) {
-                return Ok(TaiTime {
-                    secs,
-                    nanos: self.nanos,
-                });
-            }
+    pub const fn to_tai_time<const OTHER_EPOCH_REF: i64>(&self) -> TaiTime<OTHER_EPOCH_REF> {
+        TaiTime {
+            secs: (EPOCH_REF - OTHER_EPOCH_REF) + self.secs,
+            nanos: self.nanos,
         }
-
-        Err(OutOfRangeError(()))
     }
 
     /// Returns a `SystemTime` based on the timestamp.
@@ -825,9 +861,13 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     /// While no error will be reported, this method should not be considered
     /// appropriate for timestamps in the past of 1972.
     ///
-    /// Returns an error if the offset-adjusted timestamp is outside the
-    /// representable range, and in particular if the timestamp predates the
-    /// Unix epoch (1970-01-01 00:00:00 UTC).
+    /// Returns an error if the resulting timestamp predates the Unix epoch
+    /// (1970-01-01 00:00:00 UTC).
+    ///
+    /// While highly improbable, this method will also return an error on
+    /// arithmetic overflow. This would require the original timestamp, the
+    /// `leap_secs` argument or `EPOCH_REF` to approach `i64::MIN` or
+    /// `i64::MAX`, which corresponds to approximately ±292 billion years.
     ///
     /// # Examples
     ///
@@ -840,7 +880,7 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     /// // Set the date to 2000-01-01 00:00:00.123 TAI.
     /// let timestamp = MonotonicTime::new(946_684_800, 123_000_000);
     ///
-    /// // Obtain a `chrono::DateTime`, accounting for the +32s difference between
+    /// // Obtain a `SystemTime`, accounting for the +32s difference between
     /// // TAI and UTC on 2000-01-01.
     /// assert_eq!(
     ///     timestamp.to_system_time(32),
@@ -850,8 +890,9 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     #[cfg(feature = "std")]
     pub fn to_system_time(&self, leap_secs: i64) -> Result<std::time::SystemTime, OutOfRangeError> {
         let secs: u64 = self
-            .to_unix_secs(leap_secs)
-            .and_then(|secs| secs.try_into().map_err(|_| OutOfRangeError(())))?;
+            .try_to_unix_secs(leap_secs)
+            .and_then(|secs| secs.try_into().ok())
+            .ok_or(OutOfRangeError(()))?;
 
         std::time::SystemTime::UNIX_EPOCH
             .checked_add(Duration::new(secs, self.subsec_nanos()))
@@ -873,8 +914,14 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     /// While no error will be reported, this method should not be considered
     /// appropriate for timestamps in the past of 1972.
     ///
-    /// Returns an error if the offset-adjusted timestamp is outside the
-    /// representable range.
+    /// Returns an error if the resulting timestamp cannot be represented by a
+    /// `chrono::DateTime`, which may occur if the date predates
+    /// `chrono::NaiveDate::MIN` or postdates `chrono::NaiveDate::MAX`.
+    ///
+    /// While highly improbable, this method will also return an error on
+    /// arithmetic overflow. This would require the original timestamp, the
+    /// `leap_secs` argument or `EPOCH_REF` to approach `i64::MIN` or
+    /// `i64::MAX`, which corresponds to approximately ±292 billion years.
     ///
     /// # Examples
     ///
@@ -899,9 +946,9 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
         &self,
         leap_secs: i64,
     ) -> Result<chrono::DateTime<chrono::Utc>, OutOfRangeError> {
-        self.to_unix_secs(leap_secs).and_then(|secs| {
-            chrono::DateTime::from_timestamp(secs, self.nanos).ok_or(OutOfRangeError(()))
-        })
+        self.try_to_unix_secs(leap_secs)
+            .and_then(|secs| chrono::DateTime::from_timestamp(secs, self.nanos))
+            .ok_or(OutOfRangeError(()))
     }
 
     /// Adds a duration to a timestamp, checking for overflow.
@@ -998,13 +1045,16 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
 
     /// Subtracts a timestamp from another timestamp.
     ///
-    /// (Shown here for `MonotonicTime`, an alias for `TaiTime<0>`)
+    /// Consider using [`checked_duration_since`](Self::checked_duration_since)
+    /// if the relative ordering of the timestamps is not known with certainty.
     ///
     /// # Panics
     ///
     /// Panics if the argument lies in the future of `self`.
     ///
     /// # Examples
+    ///
+    /// (Shown here for `MonotonicTime`, an alias for `TaiTime<0>`)
     ///
     /// ```
     /// use std::time::Duration;
@@ -1223,19 +1273,19 @@ mod tests {
         const T_BDT: BdtTime = BdtTime::new(98_494_291, 123_456_789);
 
         // Leap seconds can be neglected for this test.
-        assert_eq!(T_TAI_1970.to_unix_secs(34).unwrap(), T_UNIX_SECS);
-        assert_eq!(T_TAI_1958.to_unix_secs(34).unwrap(), T_UNIX_SECS);
-        assert_eq!(T_TAI_1972.to_unix_secs(34).unwrap(), T_UNIX_SECS);
-        assert_eq!(T_GPS.to_unix_secs(34).unwrap(), T_UNIX_SECS);
-        assert_eq!(T_GST.to_unix_secs(34).unwrap(), T_UNIX_SECS);
-        assert_eq!(T_BDT.to_unix_secs(34).unwrap(), T_UNIX_SECS);
+        assert_eq!(T_TAI_1970.to_unix_secs(34), T_UNIX_SECS);
+        assert_eq!(T_TAI_1958.to_unix_secs(34), T_UNIX_SECS);
+        assert_eq!(T_TAI_1972.to_unix_secs(34), T_UNIX_SECS);
+        assert_eq!(T_GPS.to_unix_secs(34), T_UNIX_SECS);
+        assert_eq!(T_GST.to_unix_secs(34), T_UNIX_SECS);
+        assert_eq!(T_BDT.to_unix_secs(34), T_UNIX_SECS);
 
-        assert_eq!(T_TAI_1970.to_tai_time().unwrap(), T_TAI_1958);
-        assert_eq!(T_TAI_1970.to_tai_time().unwrap(), T_TAI_1970);
-        assert_eq!(T_TAI_1970.to_tai_time().unwrap(), T_TAI_1972);
-        assert_eq!(T_TAI_1970.to_tai_time().unwrap(), T_GPS);
-        assert_eq!(T_TAI_1970.to_tai_time().unwrap(), T_GST);
-        assert_eq!(T_TAI_1970.to_tai_time().unwrap(), T_BDT);
+        assert_eq!(T_TAI_1970.to_tai_time(), T_TAI_1958);
+        assert_eq!(T_TAI_1970.to_tai_time(), T_TAI_1970);
+        assert_eq!(T_TAI_1970.to_tai_time(), T_TAI_1972);
+        assert_eq!(T_TAI_1970.to_tai_time(), T_GPS);
+        assert_eq!(T_TAI_1970.to_tai_time(), T_GST);
+        assert_eq!(T_TAI_1970.to_tai_time(), T_BDT);
     }
 
     #[cfg(feature = "std")]
@@ -1245,7 +1295,7 @@ mod tests {
         const TAI_1972_START_OF_2050: i64 = 2_461_536_000;
 
         // Leap seconds can be neglected for this test.
-        let now_secs = Tai1972Time::now(0).unwrap().as_secs();
+        let now_secs = Tai1972Time::now_from_utc(0).as_secs();
 
         assert!(now_secs > TAI_1972_START_OF_2022);
         assert!(now_secs < TAI_1972_START_OF_2050);
@@ -1260,7 +1310,7 @@ mod tests {
 
         let system_time = std::time::SystemTime::UNIX_EPOCH + T_UNIX;
         // Account for the +32 leap seconds on that date.
-        let tai1792_time = Tai1972Time::from_system_time(&system_time, 32).unwrap();
+        let tai1792_time = Tai1972Time::from_system_time(&system_time, 32);
 
         assert_eq!(tai1792_time, T_TAI_1972);
     }
@@ -1273,7 +1323,7 @@ mod tests {
         const T_TAI_1972: Tai1972Time = Tai1972Time::new(915_280_528, 789_000_000);
 
         // Account for the +32 leap seconds on that date.
-        let tai1792_time = Tai1972Time::from_unix_timestamp(T_UNIX_SECS, T_UNIX_NANOS, 32).unwrap();
+        let tai1792_time = Tai1972Time::from_unix_timestamp(T_UNIX_SECS, T_UNIX_NANOS, 32);
 
         assert_eq!(tai1792_time, T_TAI_1972);
     }
@@ -1287,7 +1337,7 @@ mod tests {
         let chrono_date_time =
             chrono::DateTime::parse_from_rfc3339("2001-01-01T12:34:56.789Z").unwrap();
         // Account for the +32 leap seconds on that date.
-        let tai1792_time = Tai1972Time::from_chrono_date_time(&chrono_date_time, 32).unwrap();
+        let tai1792_time = Tai1972Time::from_chrono_date_time(&chrono_date_time, 32);
 
         assert_eq!(tai1792_time, T_TAI_1972);
     }
@@ -1311,7 +1361,7 @@ mod tests {
         const T_TAI_1972_NANOS: u32 = 678_000_000;
         const T_TAI_1972: Tai1972Time = Tai1972Time::new(T_TAI_1972_SECS, T_TAI_1972_NANOS);
 
-        assert_eq!(T_TAI_1972.to_unix_secs(32).unwrap(), T_UNIX_SECS);
+        assert_eq!(T_TAI_1972.to_unix_secs(32), T_UNIX_SECS);
     }
 
     #[test]
@@ -1320,7 +1370,7 @@ mod tests {
         const T_GPS: GpsTime = GpsTime::new(599_189_038, 678_000_000);
         const T_TAI_1972: Tai1972Time = Tai1972Time::new(852_081_857, 678_000_000);
 
-        let tai1792_time: Tai1972Time = T_GPS.to_tai_time().unwrap();
+        let tai1792_time: Tai1972Time = T_GPS.to_tai_time();
 
         assert_eq!(tai1792_time, T_TAI_1972);
     }

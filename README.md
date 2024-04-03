@@ -56,7 +56,9 @@ tai-time = "0.1"
 ```
 
 
-## Example
+## Examples
+
+Basic usage:
 
 ```rust
 use tai_time::{GpsTime, MonotonicTime};
@@ -65,52 +67,85 @@ use tai_time::{GpsTime, MonotonicTime};
 // (same value as Unix timestamp for 2009-02-13 23:31:30.987654321 UTC).
 let t0 = MonotonicTime::new(1_234_567_890, 987_654_321);
 
-// Current TAI time based on system clock, assuming 37 leap seconds.
-let now = MonotonicTime::now(37).unwrap();
+//! // Current TAI time based on the system clock, assuming 37 leap seconds.
+let now = MonotonicTime::now_from_utc(37);
+println!("Current TAI time: {}", now);
 
 // Elapsed time since timestamp.
 let dt = now.duration_since(t0);
-println!("{}s, {}ns", dt.as_secs(), dt.subsec_nanos());
+println!("Elapsed: {}s, {}ns", dt.as_secs(), dt.subsec_nanos());
 
-// Current GPS time.
-let gps_t0: GpsTime = t0.as_tai_time().unwrap();
-println!("{}s, {}ns", gps_t0.as_secs(), gps_t0.subsec_nanos());
+// Print out the current GPS timestamp.
+let gps_t0: GpsTime = t0.to_tai_time();
+println!("GPS timestamp: {}s, {}ns", gps_t0.as_secs(), gps_t0.subsec_nanos());
+```
+
+Conversion to and from date-time representations:
+
+```rust
+use tai_time::{MonotonicTime, Tai1958Time};
+
+// The `FromStr` implementation accepts date-time stamps with the format:
+// [±][Y]...[Y]YYYY-MM-DD hh:mm:ss[.d[d]...[d]]
+// or:
+// [±][Y]...[Y]YYYY-MM-DD'T'hh:mm:ss[.d[d]...[d]]
+let t0 = MonotonicTime::from_date_time(2222, 11, 11, 12, 34, 56, 789000000).unwrap();
+assert_eq!("2222-11-11 12:34:56.789".parse(), Ok(t0));
+
+assert_eq!(
+    Tai1958Time::new(0, 123456789).to_string(),
+    "1958-01-01 00:00:00.123456789"
+);
+```
+
+Reading TAI time directly from the system clock (Linux-only, requires
+feature `tai_clock`):
+
+```rust
+use tai_time::MonotonicTime;
+
+let now = MonotonicTime::now();
+
+println!("Current TAI time: {}", now);
 ```
 
 
 ## Design choices and limitations
 
 Leap seconds are never automatically computed during conversion to/from
-UTC-based timestamps. This is intentional: doing so would give a false sense of
-security and, since leap seconds cannot be predicted far in the future, this
-could unexpectedly break user code using a version of this library anterior to
-the introduction of new leap seconds.
-
-At the moment, no date-time parsing or formatting facilities are provided. These
-can be performed using other crates such as [chrono] (see [features
-flags](#support-for-time-related-crates)).
-
-[chrono]: https://crates.io/crates/chrono
+UTC-based timestamps. This is intentional: since leap seconds cannot be
+predicted far in the future, any attempt to "hide" their existence from user
+code would lend a false sense of security and, down the line, would make it
+more difficult to identify failures subsequent to the introduction of new
+leap seconds.
 
 
 ## Features flags
 
 ### Support for `no-std`
 
-By default, this crate enables the `std` feature to access the operating system
-clock and allow conversion to/from `time::SystemTime`, but specifying
-`default-features = false` makes it `no-std`-compatible.
+By default, this crate enables the `std` feature to access the operating
+system clock and allow conversion to/from `time::SystemTime`. It can be made
+`no-std`-compatible by specifying `default-features = false`.
 
 ### Support for time-related crates
 
 Conversion methods to and from UTC date-time stamps from the [chrono] crate
-are available with the `chrono` feature. This may also be used to parse and
-format dates.
+are available with the `chrono` feature.
+
+[chrono]: https://crates.io/crates/chrono
+
+### TAI system clock
+
+On Linux only, it is possible to read TAI time from the system clock by
+activating the `tai_clock` feature. Be sure to read about possible caveats
+in `TaiTime::now`.
 
 ### Serialization
 
-`TaiTime` and related error types can be (de)serialized with
-`serde` by activating the `serde` feature.
+`TaiTime` and related error types can be (de)serialized with `serde` by
+activating the `serde` feature.
+
 
 ## License
 
