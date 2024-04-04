@@ -1,3 +1,12 @@
+# 0.2.2 (2024-04-03)
+
+* Make it possible to initialize a `TaiClock` from an arbitrary `Instant` or an
+  arbitrary `SystemTime` ([#12]).
+* Derive more traits on `TaiTime` and `TaiClock`.
+
+[#12]: https://github.com/asynchronics/tai-time/pull/12
+
+
 # 0.2.1 (2024-04-03)
 
 * Add `TaiClock`, a monotonic clock that can generate TAI timestamps on all
