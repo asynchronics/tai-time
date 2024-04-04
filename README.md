@@ -2,8 +2,8 @@
 
 A nanosecond-precision monotonic clock timestamp based on the TAI time standard.
 
-[![Cargo](https://img.shields.io/crates/v/multishot.svg)](https://crates.io/crates/tai-time)
-[![Documentation](https://docs.rs/multishot/badge.svg)](https://docs.rs/tai-time)
+[![Cargo](https://img.shields.io/crates/v/tai-time.svg)](https://crates.io/crates/tai-time)
+[![Documentation](https://docs.rs/tai-time/badge.svg)](https://docs.rs/tai-time)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](https://github.com/asynchronics/tai-time#license)
 
 
