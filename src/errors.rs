@@ -35,6 +35,8 @@ pub enum DateTimeError {
     InvalidSecond(u8),
     /// The nanosecond field value is more than 999 999 999.
     InvalidNanosecond(u32),
+    /// This date-time value cannot be represented as a TAI timestamp with the
+    /// specified epoch.
     OutOfRange,
 }
 

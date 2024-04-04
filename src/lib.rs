@@ -497,10 +497,11 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     /// Returns an error if any of the arguments is invalid, or if the
     /// calculated timestamp is outside the representable range.
     ///
-    /// While highly improbable, this method will also return an error on
-    /// arithmetic overflow. This would require `EPOCH_REF` to approach
-    /// `i64::MIN` or `i64::MAX`, which corresponds to approximately ±292
-    /// billion years.
+    /// While highly improbable, this method will also return a
+    /// `DateTimeError::OutOfRange` error on arithmetic overflow. This would
+    /// require `EPOCH_REF` to approach `i64::MIN` or `i64::MAX`, which
+    /// corresponds to approximately ±292 billion years. This cannot happen with
+    /// any of the pre-defined `TaiTime` aliases.
     ///
     ///
     /// # Example
