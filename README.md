@@ -42,10 +42,9 @@ number of desirable properties:
 `MonotonicTime`, an alias for `TaiTime` with an epoch set at 1970-01-01 00:00:00
 TAI, is the recommended timestamp choice when no specific epoch is mandated.
 
-On platforms that support it (currently, only Linux), the TAI system clock time
-can be retrieved with `TaiTime::now`. Alternatively, on all systems that support
-`std`, `TaiClock` can generate TAI timestamps based on the monotonic system
-clock.
+On systems where `std` is present, `TaiClock` can generate TAI timestamps based
+on the monotonic system clock. On platforms that support it (currently, only
+Linux), the native TAI system clock time can be retrieved with `TaiTime::now`.
 
 [TAI]: https://en.wikipedia.org/wiki/International_Atomic_Time
 [TAI64N]: https://cr.yp.to/libtai/tai64.html
