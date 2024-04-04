@@ -23,8 +23,8 @@ pub type Tai1972Clock = TaiClock<{ Tai1972Time::EPOCH_REF }>;
 /// A monotonic clock that generates [`TaiTime`] timestamps.
 ///
 /// This clock internally relies on [`Instant::now`] and can therefore be used
-/// on systems that do not support [`TaiTime::now`], or when the clock does not
-/// need to use the wall clock time as absolute reference.
+/// on systems that do not support [`TaiTime::now`], or when the time reference
+/// needs to differ from the wall clock time (clock with offset).
 ///
 /// A `TaiClock` instance can be simultaneously accessed from several threads.
 ///
@@ -61,21 +61,18 @@ pub type Tai1972Clock = TaiClock<{ Tai1972Time::EPOCH_REF }>;
 #[derive(Copy, Clone, Debug, Hash)]
 pub struct TaiClock<const EPOCH_REF: i64> {
     timestamp_ref: TaiTime<EPOCH_REF>,
-    instant_ref: Instant,
+    wall_clock_ref: Instant,
 }
 
 impl<const EPOCH_REF: i64> TaiClock<EPOCH_REF> {
-    /// Initializes the clock by associating the current wall clock time to the
-    /// provided timestamp.
+    /// Initializes the clock by associating a TAI timestamp to the current wall
+    /// clock time.
     ///
     /// Future calls to [`now`](Self::now) will return timestamps that are
     /// relative to the provided timestamp, with a constant offset with respect
-    /// to the wall clock time.
+    /// to the monotonic wall clock time.
     pub fn init_at(now: TaiTime<EPOCH_REF>) -> Self {
-        Self {
-            timestamp_ref: now,
-            instant_ref: Instant::now(),
-        }
+        Self::init_from_instant(now, Instant::now())
     }
 
     /// Initializes the clock from the UTC system clock.
@@ -95,39 +92,67 @@ impl<const EPOCH_REF: i64> TaiClock<EPOCH_REF> {
     /// whole 24h period preceding a leap second due to the possible use of the
     /// so-called *leap second smearing* strategy.
     ///
-    /// Since it is not possible to get both monotonic and UTC clock timestamps
-    /// with a single system call, this constructor attempts to select the best
-    /// correlated pair of monotonic and UTC system clock timestamps from
-    /// several measurements. This is currently done by interleaving 3 calls to
-    /// `SystemTime::now` and 4 calls to `Instant::now`.
+    /// Note that `TaiClock` is based on the monotonic system clock while UTC
+    /// time can only be obtained from the non-monotonic system clock. This
+    /// constructor attempts to find a well-correlated pair of monotonic and UTC
+    /// system clock timestamps by collecting several candidate samples from
+    /// interleaved calls to `SystemTime::now` and `Instant::now`.
     pub fn init_from_utc(leap_secs: i64) -> Self {
-        const EXTRA_SAMPLES: usize = 2;
+        let (system_time_ref, instant_ref) = get_correlated_time_refs();
 
-        let mut instant = Instant::now();
-        let system_time = SystemTime::now();
-        let mut instant_after = Instant::now();
+        Self::init_from_instant(
+            TaiTime::from_system_time(&system_time_ref, leap_secs),
+            instant_ref,
+        )
+    }
 
-        let delta = instant_after.saturating_duration_since(instant); // uncertainty on measurement.
-        let mut measurement = (instant, delta, system_time);
-
-        for _ in 0..EXTRA_SAMPLES {
-            instant = instant_after;
-            let system_time = SystemTime::now();
-            instant_after = Instant::now();
-            let delta = instant_after.saturating_duration_since(instant);
-
-            // If the uncertainty on this measurement is lower then prefer this
-            // measurement. Measurements with a null uncertainty are discarded
-            // as they are most likely indicative of a platform bug.
-            if measurement.1.is_zero() || (delta < measurement.1 && !delta.is_zero()) {
-                measurement = (instant, delta, system_time);
-            }
-        }
-
+    /// Initializes the clock by associating the provided TAI timestamp to the
+    /// provided `Instant`.
+    ///
+    /// The `wall_clock_ref` argument may lie in the past or in the future of
+    /// the current wall clock time.
+    ///
+    /// Future calls to [`now`](Self::now) will return timestamps with a
+    /// constant offset with respect to the monotonic wall clock time. The
+    /// offset is defined by the requirement that [`now`](Self::now) should
+    /// return `timestamp_ref` when the wall clock time matches
+    /// `wall_clock_ref`.
+    pub fn init_from_instant(timestamp_ref: TaiTime<EPOCH_REF>, wall_clock_ref: Instant) -> Self {
         Self {
-            timestamp_ref: TaiTime::from_system_time(&measurement.2, leap_secs),
-            instant_ref: measurement.0 + measurement.1.mul_f32(0.5), // take the mid-point
+            timestamp_ref,
+            wall_clock_ref,
         }
+    }
+
+    /// Initializes the clock by associating a TAI timestamp to a `SystemTime`.
+    ///
+    /// The `wall_clock_ref` argument may lie in the past or in the future of
+    /// the current wall clock time.
+    ///
+    /// Future calls to [`now`](Self::now) will return timestamps with a
+    /// constant offset with respect to the monotonic wall clock time. The
+    /// offset is defined by the requirement that [`now`](Self::now) should
+    /// return `timestamp_ref` when the wall clock time matches
+    /// `wall_clock_ref`.
+    ///
+    /// Note that `TaiClock` is based on the monotonic system clock while UTC
+    /// time can only be obtained from the non-monotonic system clock. This
+    /// constructor attempts to find a well-correlated pair of monotonic and UTC
+    /// system clock timestamps by collecting several candidate samples from
+    /// interleaved calls to `SystemTime::now` and `Instant::now`.
+    pub fn init_from_system_time(
+        timestamp_ref: TaiTime<EPOCH_REF>,
+        wall_clock_ref: SystemTime,
+    ) -> Self {
+        let (system_time_ref, instant_ref) = get_correlated_time_refs();
+
+        let timestamp_ref = if wall_clock_ref > system_time_ref {
+            timestamp_ref - wall_clock_ref.duration_since(system_time_ref).unwrap()
+        } else {
+            timestamp_ref + system_time_ref.duration_since(wall_clock_ref).unwrap()
+        };
+
+        Self::init_from_instant(timestamp_ref, instant_ref)
     }
 
     /// Returns a TAI timestamp corresponding to the current wall clock time.
@@ -135,10 +160,44 @@ impl<const EPOCH_REF: i64> TaiClock<EPOCH_REF> {
     /// The returned timestamp will never be lower than a timestamp returned by
     /// a previous call to `now`.
     pub fn now(&self) -> TaiTime<EPOCH_REF> {
-        let delta = Instant::now().saturating_duration_since(self.instant_ref);
+        let now = Instant::now();
 
-        self.timestamp_ref + delta
+        if now >= self.wall_clock_ref {
+            self.timestamp_ref + now.duration_since(self.wall_clock_ref)
+        } else {
+            self.timestamp_ref - self.wall_clock_ref.duration_since(now)
+        }
     }
+}
+
+/// Returns a pair of well-correlated `SystemTime` and `Instant`.
+fn get_correlated_time_refs() -> (SystemTime, Instant) {
+    const EXTRA_SAMPLES: usize = 2;
+
+    let mut instant = Instant::now();
+    let system_time = SystemTime::now();
+    let mut instant_after = Instant::now();
+
+    let delta = instant_after.saturating_duration_since(instant); // uncertainty on measurement.
+    let mut measurement = (instant, delta, system_time);
+
+    for _ in 0..EXTRA_SAMPLES {
+        instant = instant_after;
+        let system_time = SystemTime::now();
+        instant_after = Instant::now();
+        let delta = instant_after.saturating_duration_since(instant);
+
+        // If the uncertainty on this measurement is lower then prefer this
+        // measurement. Measurements with a null uncertainty are discarded
+        // as they are most likely indicative of a platform bug.
+        if measurement.1.is_zero() || (delta < measurement.1 && !delta.is_zero()) {
+            measurement = (instant, delta, system_time);
+        }
+    }
+
+    // Take the best measurement and associate its `SystemTime` to the average
+    // value of the `Instant`s measured just before and just after it.
+    (measurement.2, measurement.0 + measurement.1.mul_f32(0.5))
 }
 
 #[cfg(test)]
@@ -150,11 +209,11 @@ mod tests {
         use std::time::Duration;
 
         const TIME_REF: MonotonicTime = MonotonicTime::new(-12345678, 987654321); // just an arbitrary value
-        const TOLERANCE_MILLIS: Duration = Duration::from_millis(20);
+        const TOLERANCE: Duration = Duration::from_millis(20);
 
         let clock = MonotonicClock::init_at(TIME_REF);
 
-        assert!(clock.now().duration_since(TIME_REF) <= TOLERANCE_MILLIS);
+        assert!(clock.now().duration_since(TIME_REF) <= TOLERANCE);
     }
 
     #[test]
@@ -162,7 +221,7 @@ mod tests {
         use std::time::Duration;
 
         const LEAP_SECS: i64 = 123; // just an arbitrary value
-        const TOLERANCE_MILLIS: Duration = Duration::from_millis(20);
+        const TOLERANCE: Duration = Duration::from_millis(20);
 
         let clock = MonotonicClock::init_from_utc(LEAP_SECS);
 
@@ -171,9 +230,73 @@ mod tests {
         let tai_now_from_clock = clock.now();
 
         if tai_now_from_clock >= tai_now_from_utc {
-            assert!(tai_now_from_clock.duration_since(tai_now_from_utc) <= TOLERANCE_MILLIS);
+            assert!(tai_now_from_clock.duration_since(tai_now_from_utc) <= TOLERANCE);
         } else {
-            assert!(tai_now_from_utc.duration_since(tai_now_from_clock) <= TOLERANCE_MILLIS);
+            assert!(tai_now_from_utc.duration_since(tai_now_from_clock) <= TOLERANCE);
         }
+    }
+
+    #[test]
+    fn clock_init_from_past_instant_smoke() {
+        use std::time::Duration;
+
+        use crate::MonotonicTime;
+
+        const OFFSET: Duration = Duration::from_secs(1000);
+        const TOLERANCE: Duration = Duration::from_millis(20);
+
+        let t0 = MonotonicTime::new(123, 456);
+        let clock = MonotonicClock::init_from_instant(t0, Instant::now() - OFFSET);
+
+        let delta = clock.now().duration_since(t0 + OFFSET);
+        assert!(delta <= TOLERANCE);
+    }
+
+    #[test]
+    fn clock_init_from_future_instant_smoke() {
+        use std::time::Duration;
+
+        use crate::MonotonicTime;
+
+        const OFFSET: Duration = Duration::from_secs(1000);
+        const TOLERANCE: Duration = Duration::from_millis(20);
+
+        let t0 = MonotonicTime::new(123, 456);
+        let clock = MonotonicClock::init_from_instant(t0, Instant::now() + OFFSET);
+
+        let delta = clock.now().duration_since(t0 - OFFSET);
+        assert!(delta <= TOLERANCE);
+    }
+
+    #[test]
+    fn clock_init_from_past_system_time_smoke() {
+        use std::time::Duration;
+
+        use crate::MonotonicTime;
+
+        const OFFSET: Duration = Duration::from_secs(1000);
+        const TOLERANCE: Duration = Duration::from_millis(20);
+
+        let t0 = MonotonicTime::new(123, 456);
+        let clock = MonotonicClock::init_from_system_time(t0, SystemTime::now() - OFFSET);
+
+        let delta = clock.now().duration_since(t0 + OFFSET);
+        assert!(delta <= TOLERANCE);
+    }
+
+    #[test]
+    fn clock_init_from_future_system_time_smoke() {
+        use std::time::Duration;
+
+        use crate::MonotonicTime;
+
+        const OFFSET: Duration = Duration::from_secs(1000);
+        const TOLERANCE: Duration = Duration::from_millis(20);
+
+        let t0 = MonotonicTime::new(123, 456);
+        let clock = MonotonicClock::init_from_system_time(t0, SystemTime::now() + OFFSET);
+
+        let delta = clock.now().duration_since(t0 - OFFSET);
+        assert!(delta <= TOLERANCE);
     }
 }
