@@ -413,7 +413,15 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     ///
     /// Note that this constructor will never fail with the [`MonotonicTime`]
     /// alias as it shares the same epoch as the TAI system clock.
-    #[cfg(all(feature = "tai_clock", target_os = "linux"))]
+    #[cfg(all(
+        feature = "tai_clock",
+        any(
+            target_os = "android",
+            target_os = "emscripten",
+            target_os = "fuchsia",
+            target_os = "linux"
+        )
+    ))]
     pub fn now() -> Self {
         Self::try_now().expect("overflow when converting timestamp")
     }
@@ -428,21 +436,23 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     /// Returns an error if the result is outside the representable range for
     /// the resulting timestamp. This is a highly unlikely occurrence since the
     /// range of a `TaiTime` spans more than ±292 billion years from its epoch.
-    #[cfg(all(feature = "tai_clock", target_os = "linux"))]
+    #[cfg(all(
+        feature = "tai_clock",
+        any(
+            target_os = "android",
+            target_os = "emscripten",
+            target_os = "fuchsia",
+            target_os = "linux"
+        )
+    ))]
     pub fn try_now() -> Result<Self, OutOfRangeError> {
-        use core::mem::MaybeUninit;
-
-        let mut c_time: MaybeUninit<libc::timespec> = MaybeUninit::uninit();
-        let ret = unsafe { libc::clock_gettime(libc::CLOCK_TAI, c_time.as_mut_ptr()) };
-
-        assert_eq!(ret, 0);
-
-        let res = unsafe { c_time.assume_init() };
+        let time = nix::time::clock_gettime(nix::time::ClockId::CLOCK_TAI)
+            .expect("unexpected error while calling clock_gettime");
 
         #[allow(clippy::useless_conversion)]
-        let secs: i64 = res.tv_sec.try_into().unwrap();
+        let secs: i64 = time.tv_sec().try_into().unwrap();
         #[allow(clippy::useless_conversion)]
-        let subsec_nanos: u32 = res.tv_nsec.try_into().unwrap();
+        let subsec_nanos: u32 = time.tv_nsec().try_into().unwrap();
 
         // The timestamp _should_ have the same epoch as `MonotonicTime`, i.e.
         // 1970-01-01 00:00:00 TAI.
@@ -1391,9 +1401,34 @@ mod tests {
         assert_eq!(t_tai_1970.to_tai_time().unwrap(), t_bdt);
     }
 
-    #[cfg(feature = "std")]
+    #[cfg(all(
+        feature = "std",
+        feature = "tai_clock",
+        any(
+            target_os = "android",
+            target_os = "emscripten",
+            target_os = "fuchsia",
+            target_os = "linux"
+        )
+    ))]
     #[test]
     fn now_smoke() {
+        let tolerance = Duration::from_secs(100);
+
+        // Leap seconds can be neglected for this test.
+        let now_utc_no_leap = GpsTime::now_from_utc(0);
+        let now_tai = GpsTime::now();
+
+        if now_utc_no_leap > now_tai {
+            assert!(now_utc_no_leap.duration_since(now_tai) < tolerance);
+        } else {
+            assert!(now_tai.duration_since(now_utc_no_leap) < tolerance);
+        }
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn now_from_utc_smoke() {
         const TAI_1972_START_OF_2022: i64 = 1_577_923_200;
         const TAI_1972_START_OF_2050: i64 = 2_461_536_000;
 
