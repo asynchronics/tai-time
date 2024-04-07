@@ -208,12 +208,12 @@ mod tests {
     fn clock_init_at_smoke() {
         use std::time::Duration;
 
-        const TIME_REF: MonotonicTime = MonotonicTime::new(-12345678, 987654321); // just an arbitrary value
+        let time_ref: MonotonicTime = MonotonicTime::new(-12345678, 987654321).unwrap(); // just an arbitrary value
         const TOLERANCE: Duration = Duration::from_millis(20);
 
-        let clock = MonotonicClock::init_at(TIME_REF);
+        let clock = MonotonicClock::init_at(time_ref);
 
-        assert!(clock.now().duration_since(TIME_REF) <= TOLERANCE);
+        assert!(clock.now().duration_since(time_ref) <= TOLERANCE);
     }
 
     #[test]
@@ -226,7 +226,7 @@ mod tests {
         let clock = MonotonicClock::init_from_utc(LEAP_SECS);
 
         let utc_now = SystemTime::UNIX_EPOCH.elapsed().unwrap();
-        let tai_now_from_utc = MonotonicTime::new(LEAP_SECS, 0) + utc_now;
+        let tai_now_from_utc = MonotonicTime::new(LEAP_SECS, 0).unwrap() + utc_now;
         let tai_now_from_clock = clock.now();
 
         if tai_now_from_clock >= tai_now_from_utc {
@@ -245,7 +245,7 @@ mod tests {
         const OFFSET: Duration = Duration::from_secs(1000);
         const TOLERANCE: Duration = Duration::from_millis(20);
 
-        let t0 = MonotonicTime::new(123, 456);
+        let t0 = MonotonicTime::new(123, 456).unwrap();
         let clock = MonotonicClock::init_from_instant(t0, Instant::now() - OFFSET);
 
         let delta = clock.now().duration_since(t0 + OFFSET);
@@ -261,7 +261,7 @@ mod tests {
         const OFFSET: Duration = Duration::from_secs(1000);
         const TOLERANCE: Duration = Duration::from_millis(20);
 
-        let t0 = MonotonicTime::new(123, 456);
+        let t0 = MonotonicTime::new(123, 456).unwrap();
         let clock = MonotonicClock::init_from_instant(t0, Instant::now() + OFFSET);
 
         let delta = clock.now().duration_since(t0 - OFFSET);
@@ -277,7 +277,7 @@ mod tests {
         const OFFSET: Duration = Duration::from_secs(1000);
         const TOLERANCE: Duration = Duration::from_millis(20);
 
-        let t0 = MonotonicTime::new(123, 456);
+        let t0 = MonotonicTime::new(123, 456).unwrap();
         let clock = MonotonicClock::init_from_system_time(t0, SystemTime::now() - OFFSET);
 
         let delta = clock.now().duration_since(t0 + OFFSET);
@@ -293,7 +293,7 @@ mod tests {
         const OFFSET: Duration = Duration::from_secs(1000);
         const TOLERANCE: Duration = Duration::from_millis(20);
 
-        let t0 = MonotonicTime::new(123, 456);
+        let t0 = MonotonicTime::new(123, 456).unwrap();
         let clock = MonotonicClock::init_from_system_time(t0, SystemTime::now() + OFFSET);
 
         let delta = clock.now().duration_since(t0 - OFFSET);

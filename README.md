@@ -69,7 +69,7 @@ use tai_time::{GpsTime, MonotonicClock, MonotonicTime};
 
 // A timestamp dated 2009-02-13 23:31:30.987654321 TAI.
 // (same value as Unix timestamp for 2009-02-13 23:31:30.987654321 UTC).
-let t0 = MonotonicTime::new(1_234_567_890, 987_654_321);
+let t0 = MonotonicTime::new(1_234_567_890, 987_654_321).unwrap();
 
 // Current TAI time based on the system clock, assuming 37 leap seconds.
 let clock = MonotonicClock::init_from_utc(37);
@@ -102,7 +102,7 @@ let t0 = MonotonicTime::from_date_time(2222, 11, 11, 12, 34, 56, 789000000).unwr
 assert_eq!("2222-11-11 12:34:56.789".parse(), Ok(t0));
 
 assert_eq!(
-    Tai1958Time::new(0, 123456789).to_string(),
+    Tai1958Time::new(0, 123456789).unwrap().to_string(),
     "1958-01-01 00:00:00.123456789"
 );
 ```

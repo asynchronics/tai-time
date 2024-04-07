@@ -92,7 +92,7 @@
 //!
 //! // A timestamp dated 2009-02-13 23:31:30.987654321 TAI.
 //! // (same value as Unix timestamp for 2009-02-13 23:31:30.987654321 UTC).
-//! let t0 = MonotonicTime::new(1_234_567_890, 987_654_321);
+//! let t0 = MonotonicTime::new(1_234_567_890, 987_654_321).unwrap();
 //!
 //! // Current TAI time based on the system clock, assuming 37 leap seconds.
 //! let clock = MonotonicClock::init_from_utc(37);
@@ -125,7 +125,7 @@
 //! assert_eq!("2222-11-11 12:34:56.789".parse(), Ok(t0));
 //!
 //! assert_eq!(
-//!     Tai1958Time::new(0, 123456789).to_string(),
+//!     Tai1958Time::new(0, 123456789).unwrap().to_string(),
 //!     "1958-01-01 00:00:00.123456789"
 //! );
 //! ```
@@ -181,7 +181,7 @@ const UNIX_EPOCH_YEAR: i32 = 1970;
 /// use tai_time::MonotonicTime;
 ///
 /// // Set the timestamp one nanosecond after the 1970 TAI epoch.
-/// let mut timestamp = MonotonicTime::new(0, 1);
+/// let mut timestamp = MonotonicTime::new(0, 1).unwrap();
 ///
 /// assert_eq!(timestamp, "1970-01-01 00:00:00.000000001".parse().unwrap());
 /// ```
@@ -198,7 +198,7 @@ pub type MonotonicTime = TaiTime<0>;
 /// use tai_time::GpsTime;
 ///
 /// // Set the timestamp one nanosecond after the GPS epoch.
-/// let mut timestamp = GpsTime::new(0, 1);
+/// let mut timestamp = GpsTime::new(0, 1).unwrap();
 ///
 /// assert_eq!(timestamp, "1980-01-06 00:00:19.000000001".parse().unwrap());
 /// ```
@@ -215,7 +215,7 @@ pub type GpsTime = TaiTime<315_964_819>;
 /// use tai_time::GstTime;
 ///
 /// // Set the timestamp one nanosecond after the GST epoch.
-/// let mut timestamp = GstTime::new(0, 1);
+/// let mut timestamp = GstTime::new(0, 1).unwrap();
 ///
 /// assert_eq!(timestamp, "1999-08-22 00:00:19.000000001".parse().unwrap());
 /// ```
@@ -232,7 +232,7 @@ pub type GstTime = TaiTime<935_280_019>;
 /// use tai_time::BdtTime;
 ///
 /// // Set the timestamp one nanosecond after the BDT epoch.
-/// let mut timestamp = BdtTime::new(0, 1);
+/// let mut timestamp = BdtTime::new(0, 1).unwrap();
 ///
 /// assert_eq!(timestamp, "2006-01-01 00:00:33.000000001".parse().unwrap());
 /// ```
@@ -253,7 +253,7 @@ pub type BdtTime = TaiTime<1_136_073_633>;
 /// use tai_time::Tai1958Time;
 ///
 /// // Set the timestamp one nanosecond after the 1958 TAI epoch.
-/// let mut timestamp = Tai1958Time::new(0, 1);
+/// let mut timestamp = Tai1958Time::new(0, 1).unwrap();
 ///
 /// assert_eq!(timestamp, "1958-01-01 00:00:00.000000001".parse().unwrap());
 /// ```
@@ -270,7 +270,7 @@ pub type Tai1958Time = TaiTime<-378_691_200>;
 /// use tai_time::Tai1972Time;
 ///
 /// // Set the timestamp one nanosecond after the 1972 TAI epoch.
-/// let mut timestamp = Tai1972Time::new(0, 1);
+/// let mut timestamp = Tai1972Time::new(0, 1).unwrap();
 ///
 /// assert_eq!(timestamp, "1972-01-01 00:00:00.000000001".parse().unwrap());
 /// ```
@@ -300,12 +300,12 @@ pub type Tai1972Time = TaiTime<63_072_000>;
 /// type MyCustomTime = TaiTime<123>;
 ///
 /// // A timestamp set to 2009-02-13 23:33:33.333333333 TAI.
-/// let mut timestamp = MyCustomTime::new(1_234_567_890, 333_333_333);
+/// let mut timestamp = MyCustomTime::new(1_234_567_890, 333_333_333).unwrap();
 ///
 /// // Increment the timestamp by 123.456s.
 /// timestamp += Duration::new(123, 456_000_000);
 ///
-/// assert_eq!(timestamp, MyCustomTime::new(1_234_568_013, 789_333_333));
+/// assert_eq!(timestamp, MyCustomTime::new(1_234_568_013, 789_333_333).unwrap());
 /// assert_eq!(timestamp.as_secs(), 1_234_568_013);
 /// assert_eq!(timestamp.subsec_nanos(), 789_333_333);
 /// ```
@@ -350,10 +350,7 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     /// The number of seconds is relative to the epoch. The number of
     /// nanoseconds is always positive and always points towards the future.
     ///
-    /// # Panics
-    ///
-    /// This constructor will panic if the number of nanoseconds is greater than
-    /// or equal to 1 second.
+    /// Returns none if the number of nanoseconds is greater than 999999999.
     ///
     /// # Example
     ///
@@ -364,22 +361,21 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     /// use tai_time::MonotonicTime;
     ///
     /// // A timestamp set to 2009-02-13 23:31:30.987654321 TAI.
-    /// let timestamp = MonotonicTime::new(1_234_567_890, 987_654_321);
+    /// let timestamp = MonotonicTime::new(1_234_567_890, 987_654_321).unwrap();
     ///
     /// // A timestamp set 0.5s in the past of the epoch.
-    /// let timestamp = MonotonicTime::new(-1, 500_000_000);
+    /// let timestamp = MonotonicTime::new(-1, 500_000_000).unwrap();
     /// assert_eq!(timestamp, MonotonicTime::EPOCH - Duration::from_millis(500));
     /// ```
-    pub const fn new(secs: i64, subsec_nanos: u32) -> Self {
-        assert!(
-            subsec_nanos < NANOS_PER_SEC,
-            "invalid number of nanoseconds"
-        );
+    pub const fn new(secs: i64, subsec_nanos: u32) -> Option<Self> {
+        if subsec_nanos >= NANOS_PER_SEC {
+            return None;
+        }
 
-        Self {
+        Some(Self {
             secs,
             nanos: subsec_nanos,
-        }
+        })
     }
 
     /// Creates a timestamp from the TAI system clock.
@@ -431,7 +427,7 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
 
         // The timestamp _should_ have the same epoch as `MonotonicTime`, i.e.
         // 1970-01-01 00:00:00 TAI.
-        let t = MonotonicTime::new(secs, subsec_nanos);
+        let t = MonotonicTime::new(secs, subsec_nanos).unwrap();
 
         t.to_tai_time()
     }
@@ -514,7 +510,7 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     ///
     /// // A timestamp set to 2009-02-13 23:31:30.987654321 TAI.
     /// let timestamp = MonotonicTime::from_date_time(2009, 2, 13, 23, 31, 30, 987_654_321);
-    /// assert_eq!(timestamp, Ok(MonotonicTime::new(1_234_567_890, 987_654_321)));
+    /// assert_eq!(timestamp, Ok(MonotonicTime::new(1_234_567_890, 987_654_321).unwrap()));
     /// ```
     pub const fn from_date_time(
         year: i32,
@@ -594,14 +590,11 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     /// // accounting for the +32s difference between UAI and UTC on 2001-09-15.
     /// assert_eq!(
     ///     MonotonicTime::from_unix_timestamp(1_000_530_300, 5_000_000, 32),
-    ///     MonotonicTime::new(1_000_530_332, 5_000_000)
+    ///     MonotonicTime::new(1_000_530_332, 5_000_000).unwrap()
     /// );
     /// ```
     pub const fn from_unix_timestamp(secs: i64, subsec_nanos: u32, leap_secs: i64) -> Self {
-        assert!(
-            subsec_nanos < NANOS_PER_SEC,
-            "invalid number of nanoseconds"
-        );
+        assert!(subsec_nanos < NANOS_PER_SEC);
 
         if let Some(secs) = secs.checked_add(leap_secs) {
             if let Some(secs) = secs.checked_sub(EPOCH_REF) {
@@ -647,7 +640,7 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     /// let system_time = SystemTime::UNIX_EPOCH + Duration::new(1_000_530_300, 5_000_000);
     /// assert_eq!(
     ///     MonotonicTime::from_system_time(&system_time, 32),
-    ///     MonotonicTime::new(1_000_530_332, 5_000_000)
+    ///     MonotonicTime::new(1_000_530_332, 5_000_000).unwrap()
     /// );
     /// ```
     #[cfg(feature = "std")]
@@ -661,7 +654,9 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
                 .checked_sub(EPOCH_REF)
                 .expect("overflow when converting timestamp"),
             0,
-        ) + unix_time
+        )
+        .unwrap()
+            + unix_time
     }
 
     /// Creates a timestamp from a `chrono::DateTime`.
@@ -739,7 +734,7 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     /// use std::time::Duration;
     /// use tai_time::MonotonicTime;
     ///
-    /// let timestamp = MonotonicTime::new(1_234_567_890, 987_654_321);
+    /// let timestamp = MonotonicTime::new(1_234_567_890, 987_654_321).unwrap();
     /// assert_eq!(timestamp.as_secs(), 1_234_567_890);
     ///
     /// let timestamp = MonotonicTime::EPOCH - Duration::new(3, 500_000_000);
@@ -761,7 +756,7 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     /// ```
     /// use tai_time::MonotonicTime;
     ///
-    /// let timestamp = MonotonicTime::new(1_234_567_890, 987_654_321);
+    /// let timestamp = MonotonicTime::new(1_234_567_890, 987_654_321).unwrap();
     /// assert_eq!(timestamp.subsec_nanos(), 987_654_321);
     /// ```
     pub const fn subsec_nanos(&self) -> u32 {
@@ -806,7 +801,7 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     /// use tai_time::MonotonicTime;
     ///
     /// // Set the date to 2000-01-01 00:00:00 TAI.
-    /// let timestamp = MonotonicTime::new(946_684_800, 0);
+    /// let timestamp = MonotonicTime::new(946_684_800, 0).unwrap();
     ///
     /// // Convert to a Unix timestamp, accounting for the +32s difference between
     /// // TAI and UTC on 2000-01-01.
@@ -853,13 +848,13 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     /// use tai_time::{GpsTime, MonotonicTime};
     ///
     /// // Set the date to 2000-01-01 00:00:00 TAI.
-    /// let timestamp = MonotonicTime::new(946_684_800, 0);
+    /// let timestamp = MonotonicTime::new(946_684_800, 0).unwrap();
     ///
     /// // Convert to a GPS timestamp.
     /// let gps_timestamp: GpsTime = timestamp.to_tai_time();
     /// assert_eq!(
     ///     gps_timestamp,
-    ///     GpsTime::new(630_719_981, 0)
+    ///     GpsTime::new(630_719_981, 0).unwrap()
     /// );
     /// ```
     pub const fn to_tai_time<const OTHER_EPOCH_REF: i64>(&self) -> TaiTime<OTHER_EPOCH_REF> {
@@ -901,7 +896,7 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     /// use tai_time::MonotonicTime;
     ///
     /// // Set the date to 2000-01-01 00:00:00.123 TAI.
-    /// let timestamp = MonotonicTime::new(946_684_800, 123_000_000);
+    /// let timestamp = MonotonicTime::new(946_684_800, 123_000_000).unwrap();
     ///
     /// // Obtain a `SystemTime`, accounting for the +32s difference between
     /// // TAI and UTC on 2000-01-01.
@@ -954,7 +949,7 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     /// use tai_time::MonotonicTime;
     ///
     /// // Set the date to 2000-01-01 00:00:00.123 TAI (1999-12-31 23:59:28.123 UTC).
-    /// let timestamp = MonotonicTime::new(946_684_800, 123_000_000);
+    /// let timestamp = MonotonicTime::new(946_684_800, 123_000_000).unwrap();
     ///
     /// // Obtain a `chrono::DateTime`, accounting for the +32s difference between
     /// // TAI and UTC on 2000-01-01.
@@ -986,7 +981,7 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     /// use std::time::Duration;
     /// use tai_time::MonotonicTime;
     ///
-    /// let timestamp = MonotonicTime::new(1_234_567_890, 987_654_321);
+    /// let timestamp = MonotonicTime::new(1_234_567_890, 987_654_321).unwrap();
     /// assert!(timestamp.checked_add(Duration::new(10, 123_456_789)).is_some());
     /// assert!(timestamp.checked_add(Duration::MAX).is_none());
     /// ```
@@ -1031,7 +1026,7 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     /// use std::time::Duration;
     /// use tai_time::MonotonicTime;
     ///
-    /// let timestamp = MonotonicTime::new(1_234_567_890, 987_654_321);
+    /// let timestamp = MonotonicTime::new(1_234_567_890, 987_654_321).unwrap();
     /// assert!(timestamp.checked_sub(Duration::new(10, 123_456_789)).is_some());
     /// assert!(timestamp.checked_sub(Duration::MAX).is_none());
     /// ```
@@ -1083,8 +1078,8 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     /// use std::time::Duration;
     /// use tai_time::MonotonicTime;
     ///
-    /// let timestamp_earlier = MonotonicTime::new(1_234_567_879, 987_654_321);
-    /// let timestamp_later = MonotonicTime::new(1_234_567_900, 123_456_789);
+    /// let timestamp_earlier = MonotonicTime::new(1_234_567_879, 987_654_321).unwrap();
+    /// let timestamp_later = MonotonicTime::new(1_234_567_900, 123_456_789).unwrap();
     /// assert_eq!(
     ///     timestamp_later.duration_since(timestamp_earlier),
     ///     Duration::new(20, 135_802_468)
@@ -1111,8 +1106,8 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     /// use std::time::Duration;
     /// use tai_time::MonotonicTime;
     ///
-    /// let timestamp_earlier = MonotonicTime::new(1_234_567_879, 987_654_321);
-    /// let timestamp_later = MonotonicTime::new(1_234_567_900, 123_456_789);
+    /// let timestamp_earlier = MonotonicTime::new(1_234_567_879, 987_654_321).unwrap();
+    /// let timestamp_later = MonotonicTime::new(1_234_567_900, 123_456_789).unwrap();
     /// assert!(timestamp_later.checked_duration_since(timestamp_earlier).is_some());
     /// assert!(timestamp_earlier.checked_duration_since(timestamp_later).is_none());
     /// ```
@@ -1266,10 +1261,10 @@ mod tests {
 
     #[test]
     fn equality() {
-        let t0 = Tai1972Time::new(123, 123_456_789);
-        let t1 = Tai1972Time::new(123, 123_456_789);
-        let t2 = Tai1972Time::new(123, 123_456_790);
-        let t3 = Tai1972Time::new(124, 123_456_789);
+        let t0 = Tai1972Time::new(123, 123_456_789).unwrap();
+        let t1 = Tai1972Time::new(123, 123_456_789).unwrap();
+        let t2 = Tai1972Time::new(123, 123_456_790).unwrap();
+        let t3 = Tai1972Time::new(124, 123_456_789).unwrap();
 
         assert_eq!(t0, t1);
         assert_ne!(t0, t2);
@@ -1278,8 +1273,8 @@ mod tests {
 
     #[test]
     fn ordering() {
-        let t0 = Tai1972Time::new(0, 1);
-        let t1 = Tai1972Time::new(1, 0);
+        let t0 = Tai1972Time::new(0, 1).unwrap();
+        let t1 = Tai1972Time::new(1, 0).unwrap();
 
         assert!(t1 > t0);
     }
@@ -1288,27 +1283,28 @@ mod tests {
     fn epoch_smoke() {
         // Set all timestamps to 2009-02-13 23:31:30.123456789 UTC.
         const T_UNIX_SECS: i64 = 1_234_567_890;
-        const T_TAI_1970: MonotonicTime = MonotonicTime::new(1_234_567_924, 123_456_789);
-        const T_TAI_1958: Tai1958Time = Tai1958Time::new(1_613_259_124, 123_456_789);
-        const T_TAI_1972: Tai1972Time = Tai1972Time::new(1_171_495_924, 123_456_789);
-        const T_GPS: GpsTime = GpsTime::new(918_603_105, 123_456_789);
-        const T_GST: GstTime = GstTime::new(299_287_905, 123_456_789);
-        const T_BDT: BdtTime = BdtTime::new(98_494_291, 123_456_789);
+
+        let t_tai_1970 = MonotonicTime::new(1_234_567_924, 123_456_789).unwrap();
+        let t_tai_1958 = Tai1958Time::new(1_613_259_124, 123_456_789).unwrap();
+        let t_tai_1972 = Tai1972Time::new(1_171_495_924, 123_456_789).unwrap();
+        let t_gps = GpsTime::new(918_603_105, 123_456_789).unwrap();
+        let t_gst = GstTime::new(299_287_905, 123_456_789).unwrap();
+        let t_bdt = BdtTime::new(98_494_291, 123_456_789).unwrap();
 
         // Leap seconds can be neglected for this test.
-        assert_eq!(T_TAI_1970.to_unix_secs(34), T_UNIX_SECS);
-        assert_eq!(T_TAI_1958.to_unix_secs(34), T_UNIX_SECS);
-        assert_eq!(T_TAI_1972.to_unix_secs(34), T_UNIX_SECS);
-        assert_eq!(T_GPS.to_unix_secs(34), T_UNIX_SECS);
-        assert_eq!(T_GST.to_unix_secs(34), T_UNIX_SECS);
-        assert_eq!(T_BDT.to_unix_secs(34), T_UNIX_SECS);
+        assert_eq!(t_tai_1970.to_unix_secs(34), T_UNIX_SECS);
+        assert_eq!(t_tai_1958.to_unix_secs(34), T_UNIX_SECS);
+        assert_eq!(t_tai_1972.to_unix_secs(34), T_UNIX_SECS);
+        assert_eq!(t_gps.to_unix_secs(34), T_UNIX_SECS);
+        assert_eq!(t_gst.to_unix_secs(34), T_UNIX_SECS);
+        assert_eq!(t_bdt.to_unix_secs(34), T_UNIX_SECS);
 
-        assert_eq!(T_TAI_1970.to_tai_time(), T_TAI_1958);
-        assert_eq!(T_TAI_1970.to_tai_time(), T_TAI_1970);
-        assert_eq!(T_TAI_1970.to_tai_time(), T_TAI_1972);
-        assert_eq!(T_TAI_1970.to_tai_time(), T_GPS);
-        assert_eq!(T_TAI_1970.to_tai_time(), T_GST);
-        assert_eq!(T_TAI_1970.to_tai_time(), T_BDT);
+        assert_eq!(t_tai_1970.to_tai_time(), t_tai_1958);
+        assert_eq!(t_tai_1970.to_tai_time(), t_tai_1970);
+        assert_eq!(t_tai_1970.to_tai_time(), t_tai_1972);
+        assert_eq!(t_tai_1970.to_tai_time(), t_gps);
+        assert_eq!(t_tai_1970.to_tai_time(), t_gst);
+        assert_eq!(t_tai_1970.to_tai_time(), t_bdt);
     }
 
     #[cfg(feature = "std")]
@@ -1328,14 +1324,14 @@ mod tests {
     #[test]
     fn from_system_time() {
         // Unix and TAI 1972 time stamps for 2001:01:01 12:34:56.789 UTC.
-        const T_UNIX: Duration = Duration::new(978_352_496, 789_000_000);
-        const T_TAI_1972: Tai1972Time = Tai1972Time::new(915_280_528, 789_000_000);
+        let t_unix = Duration::new(978_352_496, 789_000_000);
+        let t_tai_1972 = Tai1972Time::new(915_280_528, 789_000_000).unwrap();
 
-        let system_time = std::time::SystemTime::UNIX_EPOCH + T_UNIX;
+        let system_time = std::time::SystemTime::UNIX_EPOCH + t_unix;
         // Account for the +32 leap seconds on that date.
-        let tai1792_time = Tai1972Time::from_system_time(&system_time, 32);
+        let t = Tai1972Time::from_system_time(&system_time, 32);
 
-        assert_eq!(tai1792_time, T_TAI_1972);
+        assert_eq!(t, t_tai_1972);
     }
 
     #[test]
@@ -1343,26 +1339,27 @@ mod tests {
         // Unix and TAI 1972 time stamps for 2001:01:01 12:34:56.789 UTC.
         const T_UNIX_SECS: i64 = 978_352_496;
         const T_UNIX_NANOS: u32 = 789_000_000;
-        const T_TAI_1972: Tai1972Time = Tai1972Time::new(915_280_528, 789_000_000);
+
+        let t_tai_1972 = Tai1972Time::new(915_280_528, 789_000_000).unwrap();
 
         // Account for the +32 leap seconds on that date.
-        let tai1792_time = Tai1972Time::from_unix_timestamp(T_UNIX_SECS, T_UNIX_NANOS, 32);
+        let t = Tai1972Time::from_unix_timestamp(T_UNIX_SECS, T_UNIX_NANOS, 32);
 
-        assert_eq!(tai1792_time, T_TAI_1972);
+        assert_eq!(t, t_tai_1972);
     }
 
     #[cfg(feature = "chrono")]
     #[test]
     fn from_chrono_date_time() {
         // TAI 1972 time stamp for 2001:01:01 12:34:56.789 UTC.
-        const T_TAI_1972: Tai1972Time = Tai1972Time::new(915_280_528, 789_000_000);
+        let t_tai_1972 = Tai1972Time::new(915_280_528, 789_000_000).unwrap();
 
         let chrono_date_time =
             chrono::DateTime::parse_from_rfc3339("2001-01-01T12:34:56.789Z").unwrap();
         // Account for the +32 leap seconds on that date.
-        let tai1792_time = Tai1972Time::from_chrono_date_time(&chrono_date_time, 32);
+        let t = Tai1972Time::from_chrono_date_time(&chrono_date_time, 32);
 
-        assert_eq!(tai1792_time, T_TAI_1972);
+        assert_eq!(t, t_tai_1972);
     }
 
     #[test]
@@ -1370,10 +1367,11 @@ mod tests {
         // TAI 1972 time stamp for 1999:01:01 01:23:45.678 UTC.
         const T_TAI_1972_SECS: i64 = 852_081_857;
         const T_TAI_1972_NANOS: u32 = 678_000_000;
-        const T_TAI_1972: Tai1972Time = Tai1972Time::new(T_TAI_1972_SECS, T_TAI_1972_NANOS);
 
-        assert_eq!(T_TAI_1972.as_secs(), T_TAI_1972_SECS);
-        assert_eq!(T_TAI_1972.subsec_nanos(), T_TAI_1972_NANOS);
+        let t = Tai1972Time::new(T_TAI_1972_SECS, T_TAI_1972_NANOS).unwrap();
+
+        assert_eq!(t.as_secs(), T_TAI_1972_SECS);
+        assert_eq!(t.subsec_nanos(), T_TAI_1972_NANOS);
     }
 
     #[test]
@@ -1382,20 +1380,21 @@ mod tests {
         const T_UNIX_SECS: i64 = 915_153_825;
         const T_TAI_1972_SECS: i64 = 852_081_857;
         const T_TAI_1972_NANOS: u32 = 678_000_000;
-        const T_TAI_1972: Tai1972Time = Tai1972Time::new(T_TAI_1972_SECS, T_TAI_1972_NANOS);
 
-        assert_eq!(T_TAI_1972.to_unix_secs(32), T_UNIX_SECS);
+        let t = Tai1972Time::new(T_TAI_1972_SECS, T_TAI_1972_NANOS).unwrap();
+
+        assert_eq!(t.to_unix_secs(32), T_UNIX_SECS);
     }
 
     #[test]
     fn to_tai_time() {
         // GPS and TAI 1972 time stamps for 1999:01:01 01:23:45.678 UTC.
-        const T_GPS: GpsTime = GpsTime::new(599_189_038, 678_000_000);
-        const T_TAI_1972: Tai1972Time = Tai1972Time::new(852_081_857, 678_000_000);
+        let t_gps = GpsTime::new(599_189_038, 678_000_000).unwrap();
+        let t_tai_1972 = Tai1972Time::new(852_081_857, 678_000_000).unwrap();
 
-        let tai1792_time: Tai1972Time = T_GPS.to_tai_time();
+        let t: Tai1972Time = t_gps.to_tai_time();
 
-        assert_eq!(tai1792_time, T_TAI_1972);
+        assert_eq!(t, t_tai_1972);
     }
 
     #[cfg(feature = "std")]
@@ -1403,10 +1402,10 @@ mod tests {
     fn to_system_time() {
         // Unix and TAI 1972 time stamp for 1999:01:01 01:23:45.678 UTC.
         const T_UNIX: Duration = Duration::new(915_153_825, 678_000_000);
-        const T_TAI_1972: Tai1972Time = Tai1972Time::new(852_081_857, 678_000_000);
+        let t_tai_1972 = Tai1972Time::new(852_081_857, 678_000_000).unwrap();
 
         assert_eq!(
-            T_TAI_1972.to_system_time(32).unwrap(),
+            t_tai_1972.to_system_time(32).unwrap(),
             std::time::SystemTime::UNIX_EPOCH + T_UNIX
         );
     }
@@ -1415,24 +1414,23 @@ mod tests {
     #[test]
     fn to_chrono_date_time() {
         // TAI 1972 time stamp for 1999:01:01 01:23:45.678 UTC.
-        const T_TAI_1972: Tai1972Time = Tai1972Time::new(852_081_857, 678_000_000);
+        let t_tai_1972 = Tai1972Time::new(852_081_857, 678_000_000).unwrap();
 
         assert_eq!(
-            T_TAI_1972.to_chrono_date_time(32).unwrap(),
+            t_tai_1972.to_chrono_date_time(32).unwrap(),
             chrono::DateTime::parse_from_rfc3339("1999-01-01T01:23:45.678Z").unwrap()
         );
     }
 
     #[test]
-    #[should_panic]
     fn invalid_nanoseconds() {
-        Tai1958Time::new(123, 1_000_000_000);
+        assert_eq!(Tai1958Time::new(123, 1_000_000_000), None);
     }
 
     #[test]
     fn duration_since_smoke() {
-        let t0 = Tai1972Time::new(100, 100_000_000);
-        let t1 = Tai1972Time::new(123, 223_456_789);
+        let t0 = Tai1972Time::new(100, 100_000_000).unwrap();
+        let t1 = Tai1972Time::new(123, 223_456_789).unwrap();
 
         assert_eq!(
             t1.checked_duration_since(t0),
@@ -1442,8 +1440,8 @@ mod tests {
 
     #[test]
     fn duration_with_carry() {
-        let t0 = Tai1972Time::new(100, 200_000_000);
-        let t1 = Tai1972Time::new(101, 100_000_000);
+        let t0 = Tai1972Time::new(100, 200_000_000).unwrap();
+        let t1 = Tai1972Time::new(101, 100_000_000).unwrap();
 
         assert_eq!(
             t1.checked_duration_since(t0),
@@ -1464,42 +1462,45 @@ mod tests {
 
     #[test]
     fn duration_since_invalid() {
-        let t0 = Tai1972Time::new(100, 0);
-        let t1 = Tai1972Time::new(99, 0);
+        let t0 = Tai1972Time::new(100, 0).unwrap();
+        let t1 = Tai1972Time::new(99, 0).unwrap();
 
         assert_eq!(t1.checked_duration_since(t0), None);
     }
 
     #[test]
     fn add_duration_smoke() {
-        let t = Tai1972Time::new(-100, 100_000_000);
+        let t = Tai1972Time::new(-100, 100_000_000).unwrap();
         let dt = Duration::new(400, 300_000_000);
 
-        assert_eq!(t + dt, Tai1972Time::new(300, 400_000_000));
+        assert_eq!(t + dt, Tai1972Time::new(300, 400_000_000).unwrap());
     }
 
     #[test]
     fn add_duration_with_carry() {
-        let t = Tai1972Time::new(-100, 900_000_000);
+        let t = Tai1972Time::new(-100, 900_000_000).unwrap();
         let dt1 = Duration::new(400, 100_000_000);
         let dt2 = Duration::new(400, 300_000_000);
 
-        assert_eq!(t + dt1, Tai1972Time::new(301, 0));
-        assert_eq!(t + dt2, Tai1972Time::new(301, 200_000_000));
+        assert_eq!(t + dt1, Tai1972Time::new(301, 0).unwrap());
+        assert_eq!(t + dt2, Tai1972Time::new(301, 200_000_000).unwrap());
     }
 
     #[test]
     fn add_duration_extreme() {
-        let t = Tai1972Time::new(i64::MIN, 0);
+        let t = Tai1972Time::new(i64::MIN, 0).unwrap();
         let dt = Duration::new(u64::MAX, NANOS_PER_SEC - 1);
 
-        assert_eq!(t + dt, Tai1972Time::new(i64::MAX, NANOS_PER_SEC - 1));
+        assert_eq!(
+            t + dt,
+            Tai1972Time::new(i64::MAX, NANOS_PER_SEC - 1).unwrap()
+        );
     }
 
     #[test]
     #[should_panic]
     fn add_duration_overflow() {
-        let t = Tai1972Time::new(i64::MIN, 1);
+        let t = Tai1972Time::new(i64::MIN, 1).unwrap();
         let dt = Duration::new(u64::MAX, NANOS_PER_SEC - 1);
 
         let _ = t + dt;
@@ -1507,34 +1508,34 @@ mod tests {
 
     #[test]
     fn sub_duration_smoke() {
-        let t = Tai1972Time::new(100, 500_000_000);
+        let t = Tai1972Time::new(100, 500_000_000).unwrap();
         let dt = Duration::new(400, 300_000_000);
 
-        assert_eq!(t - dt, Tai1972Time::new(-300, 200_000_000));
+        assert_eq!(t - dt, Tai1972Time::new(-300, 200_000_000).unwrap());
     }
 
     #[test]
     fn sub_duration_with_carry() {
-        let t = Tai1972Time::new(100, 100_000_000);
+        let t = Tai1972Time::new(100, 100_000_000).unwrap();
         let dt1 = Duration::new(400, 100_000_000);
         let dt2 = Duration::new(400, 300_000_000);
 
-        assert_eq!(t - dt1, Tai1972Time::new(-300, 0));
-        assert_eq!(t - dt2, Tai1972Time::new(-301, 800_000_000));
+        assert_eq!(t - dt1, Tai1972Time::new(-300, 0).unwrap());
+        assert_eq!(t - dt2, Tai1972Time::new(-301, 800_000_000).unwrap());
     }
 
     #[test]
     fn sub_duration_extreme() {
-        let t = Tai1972Time::new(i64::MAX, NANOS_PER_SEC - 1);
+        let t = Tai1972Time::new(i64::MAX, NANOS_PER_SEC - 1).unwrap();
         let dt = Duration::new(u64::MAX, NANOS_PER_SEC - 1);
 
-        assert_eq!(t - dt, Tai1972Time::new(i64::MIN, 0));
+        assert_eq!(t - dt, Tai1972Time::new(i64::MIN, 0).unwrap());
     }
 
     #[test]
     #[should_panic]
     fn sub_duration_overflow() {
-        let t = Tai1972Time::new(i64::MAX, NANOS_PER_SEC - 2);
+        let t = Tai1972Time::new(i64::MAX, NANOS_PER_SEC - 2).unwrap();
         let dt = Duration::new(u64::MAX, NANOS_PER_SEC - 1);
 
         let _ = t - dt;
