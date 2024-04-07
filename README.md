@@ -85,7 +85,7 @@ let dt = clock.now().duration_since(t1);
 println!("Elapsed: {}s, {}ns", dt.as_secs(), dt.subsec_nanos());
 
 // Print out `t1` as a GPS timestamp.
-let gps_t1: GpsTime = t1.to_tai_time();
+let gps_t1: GpsTime = t1.to_tai_time().unwrap();
 println!("GPS timestamp: {}s, {}ns", gps_t1.as_secs(), gps_t1.subsec_nanos());
 ```
 
@@ -98,7 +98,7 @@ use tai_time::{MonotonicTime, Tai1958Time};
 // [±][Y]...[Y]YYYY-MM-DD hh:mm:ss[.d[d]...[d]]
 // or:
 // [±][Y]...[Y]YYYY-MM-DD'T'hh:mm:ss[.d[d]...[d]]
-let t0 = MonotonicTime::from_date_time(2222, 11, 11, 12, 34, 56, 789000000).unwrap();
+let t0 = MonotonicTime::try_from_date_time(2222, 11, 11, 12, 34, 56, 789000000).unwrap();
 assert_eq!("2222-11-11 12:34:56.789".parse(), Ok(t0));
 
 assert_eq!(
