@@ -3,7 +3,8 @@
 use core::fmt;
 
 /// The error type returned when the result of a conversion to or from a
-/// [`TaiTime`](crate::TaiTime) is outside the representable range.
+/// [`TaiTime`](crate::TaiTime) is outside the representable range, or the
+/// conversion would cause the result to overflow.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct OutOfRangeError(pub(crate) ());
@@ -53,7 +54,7 @@ impl fmt::Display for DateTimeError {
             Self::InvalidNanosecond(nanosec) => {
                 write!(fmt, "nanosecond value '{}' is not valid", nanosec)
             }
-            Self::OutOfRange => "timestamp out of representable range".fmt(fmt),
+            Self::OutOfRange => "timestamp outside representable range".fmt(fmt),
         }
     }
 }
