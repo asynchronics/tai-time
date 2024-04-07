@@ -1,3 +1,17 @@
+# 0.3.0 (2024-04-07)
+
+* **:warning: Breaking API changes:** Make `new()` return an `Option` ([#16]).
+* **:warning: Breaking API changes:** Implement some new `try_from_*` methods
+  and rename some former `from_*` methods into `try_from_*` for consistency
+  ([#17]).
+* Use `Nix` crate instead of `libc` to remove `unsafe` in `now()` implementation
+  ([#18]).
+
+[#16]: https://github.com/asynchronics/tai-time/pull/16
+[#17]: https://github.com/asynchronics/tai-time/pull/17
+[#18]: https://github.com/asynchronics/tai-time/pull/18
+
+
 # 0.2.2 (2024-04-03)
 
 * Make it possible to initialize a `TaiClock` from an arbitrary `Instant` or an
