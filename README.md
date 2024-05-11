@@ -89,21 +89,38 @@ let gps_t1: GpsTime = t1.to_tai_time().unwrap();
 println!("GPS timestamp: {}s, {}ns", gps_t1.as_secs(), gps_t1.subsec_nanos());
 ```
 
-Conversion to and from date-time representations:
+Construction from date-time fields and date-time strings:
 
 ```rust
 use tai_time::{MonotonicTime, Tai1958Time};
-
+let t0 = MonotonicTime::try_from_date_time(2222, 11, 11, 12, 34, 56, 789000000).unwrap();
 // The `FromStr` implementation accepts date-time stamps with the format:
 // [±][Y]...[Y]YYYY-MM-DD hh:mm:ss[.d[d]...[d]]
 // or:
 // [±][Y]...[Y]YYYY-MM-DD'T'hh:mm:ss[.d[d]...[d]]
-let t0 = MonotonicTime::try_from_date_time(2222, 11, 11, 12, 34, 56, 789000000).unwrap();
 assert_eq!("2222-11-11 12:34:56.789".parse(), Ok(t0));
+```
 
+Formatted display as date-time:
+
+```rust
+use tai_time::MonotonicTime;
+let t0 = MonotonicTime::try_from_date_time(1234, 12, 13, 14, 15, 16, 123456000).unwrap();
 assert_eq!(
-    Tai1958Time::new(0, 123456789).unwrap().to_string(),
-    "1958-01-01 00:00:00.123456789"
+    format!("{}", t0),
+    "1234-12-13 14:15:16.123456"
+);
+assert_eq!(
+    format!("{:.0}", t0),
+    "1234-12-13 14:15:16"
+);
+assert_eq!(
+    format!("{:.3}", t0),
+    "1234-12-13 14:15:16.123"
+);
+assert_eq!(
+    format!("{:.9}", t0),
+    "1234-12-13 14:15:16.123456000"
 );
 ```
 
