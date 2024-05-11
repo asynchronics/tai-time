@@ -112,21 +112,42 @@
 //! println!("GPS timestamp: {}s, {}ns", gps_t1.as_secs(), gps_t1.subsec_nanos());
 //! ```
 //!
-//! Conversion to and from date-time representations:
+//! Construction from date-time fields and date-time strings:
 //!
 //! ```
 //! use tai_time::{MonotonicTime, Tai1958Time};
+//!
+//! let t0 = MonotonicTime::try_from_date_time(2222, 11, 11, 12, 34, 56, 789000000).unwrap();
 //!
 //! // The `FromStr` implementation accepts date-time stamps with the format:
 //! // [±][Y]...[Y]YYYY-MM-DD hh:mm:ss[.d[d]...[d]]
 //! // or:
 //! // [±][Y]...[Y]YYYY-MM-DD'T'hh:mm:ss[.d[d]...[d]]
-//! let t0 = MonotonicTime::try_from_date_time(2222, 11, 11, 12, 34, 56, 789000000).unwrap();
 //! assert_eq!("2222-11-11 12:34:56.789".parse(), Ok(t0));
+//! ```
+//!
+//! Formatted display as date-time:
+//!
+//! ```
+//! use tai_time::MonotonicTime;
+//!
+//! let t0 = MonotonicTime::try_from_date_time(1234, 12, 13, 14, 15, 16, 123456000).unwrap();
 //!
 //! assert_eq!(
-//!     Tai1958Time::new(0, 123456789).unwrap().to_string(),
-//!     "1958-01-01 00:00:00.123456789"
+//!     format!("{}", t0),
+//!     "1234-12-13 14:15:16.123456"
+//! );
+//! assert_eq!(
+//!     format!("{:.0}", t0),
+//!     "1234-12-13 14:15:16"
+//! );
+//! assert_eq!(
+//!     format!("{:.3}", t0),
+//!     "1234-12-13 14:15:16.123"
+//! );
+//! assert_eq!(
+//!     format!("{:.9}", t0),
+//!     "1234-12-13 14:15:16.123456000"
 //! );
 //! ```
 //!
@@ -1318,6 +1339,8 @@ impl<const EPOCH_REF: i64> FromStr for TaiTime<EPOCH_REF> {
 impl<const EPOCH_REF: i64> fmt::Display for TaiTime<EPOCH_REF> {
     /// Displays the TAI timestamp as an RFC3339-like date-time.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use core::str::from_utf8;
+
         // We need to use an i128 timestamp as it may otherwise overflow when
         // translated to year 0.
         let secs_from_year_0: i128 =
@@ -1341,8 +1364,46 @@ impl<const EPOCH_REF: i64> fmt::Display for TaiTime<EPOCH_REF> {
             sec
         )?;
 
-        if self.nanos != 0 {
-            write!(f, ".{:09}", self.nanos)?;
+        fn split_last_digit(n: u32) -> (u32, u32) {
+            // A fast implementation of n/10.
+            let left = (((n as u64) * 429496730u64) >> 32) as u32;
+            // A fast implementation of n%10.
+            let right = n - left * 10;
+
+            (left, right)
+        }
+
+        match f.precision() {
+            Some(precision) if precision != 0 => {
+                let mut n = self.nanos;
+                let mut buffer = [0u8; 9];
+
+                for pos in (0..9).rev() {
+                    let (new_n, digit) = split_last_digit(n);
+                    n = new_n;
+                    buffer[pos] = digit as u8 + 48; // ASCII/UTF8 codepoint for numerals
+                }
+
+                write!(f, ".{}", from_utf8(&buffer[0..precision.min(9)]).unwrap())?;
+            }
+            None => {
+                let mut n = self.nanos;
+                let mut buffer = [0u8; 9];
+                let mut precision = None;
+                for pos in (0..9).rev() {
+                    let (new_n, digit) = split_last_digit(n);
+                    if digit != 0 && precision.is_none() {
+                        precision = Some(pos);
+                    }
+                    n = new_n;
+                    buffer[pos] = digit as u8 + 48;
+                }
+
+                if let Some(precision) = precision {
+                    write!(f, ".{}", from_utf8(&buffer[0..=precision]).unwrap())?;
+                }
+            }
+            _ => {} // precision == Some(0)
         }
 
         Ok(())

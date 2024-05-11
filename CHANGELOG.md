@@ -1,3 +1,8 @@
+# [Unreleased]
+
+* honor formatter precision specifier (`{:.N}`) for nanosecond display.
+
+
 # 0.3.0 (2024-04-07)
 
 * **:warning: Breaking API changes:** Make `new()` return an `Option` ([#16]).
