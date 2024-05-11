@@ -1,4 +1,4 @@
-# [Unreleased]
+# 0.3.1 (2024-05-11)
 
 * honor formatter precision specifier (`{:.N}`) for nanosecond display.
 
