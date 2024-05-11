@@ -1,3 +1,5 @@
+//! Clock for the generation of `TaiTime` timestamps.
+
 use std::time::{Instant, SystemTime};
 
 use crate::{BdtTime, GpsTime, GstTime, MonotonicTime, Tai1958Time, Tai1972Time, TaiTime};
