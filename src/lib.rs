@@ -82,6 +82,11 @@
 //! `TaiTime` and related error types can be (de)serialized with `serde` by
 //! activating the `serde` feature.
 //!
+//! ### `defmt` support
+//!
+//! Activating the `defmt` feature will add the
+//! [`defmt::Format`](https://defmt.ferrous-systems.com/format) derive on all important structures
+//! by this crate.
 //!
 //! # Examples
 //!
@@ -332,6 +337,7 @@ pub type Tai1972Time = TaiTime<63_072_000>;
 /// ```
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct TaiTime<const EPOCH_REF: i64> {
     /// The number of whole seconds in the future (if positive) or in the past
     /// (if negative) of 1970-01-01 00:00:00 TAI.
