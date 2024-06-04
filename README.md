@@ -172,6 +172,11 @@ in `TaiTime::now`.
 `TaiTime` and related error types can be (de)serialized with `serde` by
 activating the `serde` feature.
 
+### `defmt` support
+
+Activating the `defmt` feature will derive the
+[`defmt::Format`](https://defmt.ferrous-systems.com/format) trait on `TaiTime`
+and related error types.
 
 ## License
 

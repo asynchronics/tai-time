@@ -84,9 +84,9 @@
 //!
 //! ### `defmt` support
 //!
-//! Activating the `defmt` feature will add the
-//! [`defmt::Format`](https://defmt.ferrous-systems.com/format) derive on all important structures
-//! by this crate.
+//! Activating the `defmt` feature will derive the
+//! [`defmt::Format`](https://defmt.ferrous-systems.com/format) trait on
+//! `TaiTime` and related error types.
 //!
 //! # Examples
 //!

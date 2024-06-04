@@ -7,6 +7,7 @@ use core::fmt;
 /// conversion would cause the result to overflow.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct OutOfRangeError(pub(crate) ());
 
 impl fmt::Display for OutOfRangeError {
@@ -22,6 +23,7 @@ impl std::error::Error for OutOfRangeError {}
 /// to a timestamp outside the representable range.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum DateTimeError {
     /// The month is not between 1 and 12.
     InvalidMonth(u8),
@@ -66,6 +68,7 @@ impl std::error::Error for DateTimeError {}
 /// a timestamp outside the representable range.
 #[derive(Debug, PartialEq, Eq, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum ParseDateTimeError {
     /// A field value is either not of the expected numeric type or is out of
     /// range for the expected numeric type.

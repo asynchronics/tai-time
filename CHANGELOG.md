@@ -1,6 +1,15 @@
+# [Unreleased]
+
+* Add optional support for the `defmt` crate ([#20]).
+
+[#20]: https://github.com/asynchronics/tai-time/pull/20
+
+
 # 0.3.1 (2024-05-11)
 
-* honor formatter precision specifier (`{:.N}`) for nanosecond display.
+* Honor formatter precision specifier (`{:.N}`) for nanosecond display ([#19]).
+
+[#19]: https://github.com/asynchronics/tai-time/pull/19
 
 
 # 0.3.0 (2024-04-07)
