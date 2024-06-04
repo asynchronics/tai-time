@@ -1,8 +1,9 @@
-# [Unreleased]
+# 0.3.2 (2024-06-04)
 
-* Add optional support for the `defmt` crate ([#20]).
+* Add optional support for the `defmt` crate ([#20], [#21]).
 
 [#20]: https://github.com/asynchronics/tai-time/pull/20
+[#21]: https://github.com/asynchronics/tai-time/pull/21
 
 
 # 0.3.1 (2024-05-11)
