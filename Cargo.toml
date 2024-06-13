@@ -24,6 +24,9 @@ serde = { version = "1", default-features = false, features = ["derive"], option
 nix = { version = "0.26", default-features = false, features = ["time"], optional = true }
 defmt = { version = "0.3", optional = true }
 
+[dev-dependencies]
+serde_json = "1"
+
 [features]
 default = ["std"]
 std = []
