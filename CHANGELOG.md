@@ -1,3 +1,10 @@
+# 0.3.3 (2024-06-13)
+
+* Validate the number of nanoseconds during deserialization ([#22]).
+
+[#22]: https://github.com/asynchronics/tai-time/pull/22
+
+
 # 0.3.2 (2024-06-04)
 
 * Add optional support for the `defmt` crate ([#20], [#21]).

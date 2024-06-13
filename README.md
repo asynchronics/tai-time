@@ -56,7 +56,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-tai-time = "0.3.2"
+tai-time = "0.3.3"
 ```
 
 
