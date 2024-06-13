@@ -336,7 +336,7 @@ pub type Tai1972Time = TaiTime<63_072_000>;
 /// assert_eq!(timestamp.subsec_nanos(), 789_333_333);
 /// ```
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct TaiTime<const EPOCH_REF: i64> {
     /// The number of whole seconds in the future (if positive) or in the past
@@ -348,6 +348,7 @@ pub struct TaiTime<const EPOCH_REF: i64> {
     secs: i64,
     /// The sub-second number of nanoseconds in the future of the point in time
     /// defined by `secs`.
+    #[cfg_attr(feature = "serde", serde(deserialize_with = "validate_nanos"))]
     nanos: u32,
 }
 
@@ -1416,113 +1417,20 @@ impl<const EPOCH_REF: i64> fmt::Display for TaiTime<EPOCH_REF> {
     }
 }
 
+/// Validator for nanoseconds deserializer.
 #[cfg(feature = "serde")]
-impl<'de, const EPOCH_REF: i64> serde::Deserialize<'de> for TaiTime<EPOCH_REF> {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::de::Deserializer<'de>,
-    {
-        use serde::de::{self, Deserialize, Deserializer, MapAccess, SeqAccess, Visitor};
-
-        enum Field {
-            Secs,
-            Nanos,
-        }
-
-        impl<'de> Deserialize<'de> for Field {
-            fn deserialize<D>(deserializer: D) -> Result<Field, D::Error>
-            where
-                D: Deserializer<'de>,
-            {
-                struct FieldVisitor;
-
-                impl<'de> Visitor<'de> for FieldVisitor {
-                    type Value = Field;
-
-                    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                        formatter.write_str("`secs` or `nanos`")
-                    }
-
-                    fn visit_str<E>(self, value: &str) -> Result<Field, E>
-                    where
-                        E: de::Error,
-                    {
-                        match value {
-                            "secs" => Ok(Field::Secs),
-                            "nanos" => Ok(Field::Nanos),
-                            _ => Err(de::Error::unknown_field(value, FIELDS)),
-                        }
-                    }
-                }
-
-                deserializer.deserialize_identifier(FieldVisitor)
-            }
-        }
-
-        struct DurationVisitor<const EPOCH_REF: i64>;
-
-        impl<'de, const EPOCH_REF: i64> Visitor<'de> for DurationVisitor<EPOCH_REF> {
-            type Value = TaiTime<EPOCH_REF>;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("struct TaiTime")
-            }
-
-            fn visit_seq<V>(self, mut seq: V) -> Result<TaiTime<EPOCH_REF>, V::Error>
-            where
-                V: SeqAccess<'de>,
-            {
-                let secs = seq
-                    .next_element()?
-                    .ok_or_else(|| de::Error::invalid_length(0, &self))?;
-                let nanos = seq
-                    .next_element()?
-                    .ok_or_else(|| de::Error::invalid_length(1, &self))?;
-
-                TaiTime::new(secs, nanos).ok_or_else(|| {
-                    de::Error::invalid_value(
-                        de::Unexpected::Unsigned(nanos as u64),
-                        &"a number of nanoseconds between 0 and 999999999",
-                    )
-                })
-            }
-
-            fn visit_map<V>(self, mut map: V) -> Result<TaiTime<EPOCH_REF>, V::Error>
-            where
-                V: MapAccess<'de>,
-            {
-                let mut secs = None;
-                let mut nanos = None;
-                while let Some(key) = map.next_key()? {
-                    match key {
-                        Field::Secs => {
-                            if secs.is_some() {
-                                return Err(de::Error::duplicate_field("secs"));
-                            }
-                            secs = Some(map.next_value()?);
-                        }
-                        Field::Nanos => {
-                            if nanos.is_some() {
-                                return Err(de::Error::duplicate_field("nanos"));
-                            }
-                            nanos = Some(map.next_value()?);
-                        }
-                    }
-                }
-                let secs = secs.ok_or_else(|| de::Error::missing_field("secs"))?;
-                let nanos = nanos.ok_or_else(|| de::Error::missing_field("nanos"))?;
-
-                TaiTime::new(secs, nanos).ok_or_else(|| {
-                    de::Error::invalid_value(
-                        de::Unexpected::Unsigned(nanos as u64),
-                        &"a number of nanoseconds between 0 and 999999999",
-                    )
-                })
-            }
-        }
-
-        const FIELDS: &[&str] = &["secs", "nanos"];
-        deserializer.deserialize_struct("TaiTime", FIELDS, DurationVisitor::<EPOCH_REF>)
+fn validate_nanos<'de, D>(deserializer: D) -> Result<u32, D::Error>
+where
+    D: serde::de::Deserializer<'de>,
+{
+    let v: u32 = serde::de::Deserialize::deserialize(deserializer)?;
+    if v < NANOS_PER_SEC {
+        Ok(v)
+    } else {
+        Err(serde::de::Error::invalid_value(
+            serde::de::Unexpected::Unsigned(v as u64),
+            &"a number of nanoseconds less than 1000000000",
+        ))
     }
 }
 
