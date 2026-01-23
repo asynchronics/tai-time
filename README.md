@@ -6,7 +6,6 @@ A nanosecond-precision monotonic clock timestamp based on the TAI time standard.
 [![Documentation](https://docs.rs/tai-time/badge.svg)](https://docs.rs/tai-time)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](https://github.com/asynchronics/tai-time#license)
 
-
 ## Overview
 
 While Rust's standard library already provides the `std::time::Instant`
@@ -27,12 +26,12 @@ number of desirable properties:
   standard `Duration` type, which uses a very similar internal
   representation,
 - when a 1970 epoch is chosen (see `MonotonicTime`):
-  * exact conversion to a Unix timestamp is trivial and only requires
+  - exact conversion to a Unix timestamp is trivial and only requires
     subtracting from this timestamp the number of leap seconds between TAI
     and UTC time,
-  * it constitutes a strict 96-bit superset of 80-bit PTP IEEE-1588
+  - it constitutes a strict 96-bit superset of 80-bit PTP IEEE-1588
     timestamps, a widely used standard for high-precision time distribution,
-  * it is substantially similar (though not strictly identical) to the
+  - it is substantially similar (though not strictly identical) to the
     [TAI64N] time format,
 - with a custom epoch, other monotonic clocks such as the Global Position System
   clock, the Galileo System Time clock and the BeiDou Time clock can be
@@ -49,16 +48,14 @@ Linux), the native TAI system clock time can be retrieved with `TaiTime::now`.
 [TAI]: https://en.wikipedia.org/wiki/International_Atomic_Time
 [TAI64N]: https://cr.yp.to/libtai/tai64.html
 
-
 ## Usage
 
 Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-tai-time = "0.3.3"
+tai-time = "1"
 ```
-
 
 ## Examples
 
@@ -135,7 +132,6 @@ let now = MonotonicTime::now();
 println!("Current TAI time: {}", now);
 ```
 
-
 ## Design choices and limitations
 
 Leap seconds are never automatically computed during conversion to/from
@@ -144,7 +140,6 @@ predicted far in the future, any attempt to "hide" their existence from user
 code would lend a false sense of security and, down the line, would make it
 more difficult to identify failures subsequent to the introduction of new
 leap seconds.
-
 
 ## Features flags
 
@@ -188,7 +183,6 @@ on `TaiTime`.
 
 This software is licensed under the [Apache License, Version
 2.0](LICENSE-APACHE) or the [MIT license](LICENSE-MIT), at your option.
-
 
 ## Contribution
 

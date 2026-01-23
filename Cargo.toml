@@ -6,7 +6,7 @@ name = "tai-time"
 # - Update if necessary copyright notice in LICENSE-MIT
 # - Create a "vX.Y.Z" git tag
 version = "1.0.0"
-authors = ["Asynchronics and the tai-time Contributors"]
+authors = ["Asynchronics and the tai-time contributors"]
 edition = "2024"
 rust-version = "1.88.0"
 license = "MIT OR Apache-2.0"
