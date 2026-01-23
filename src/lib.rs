@@ -183,7 +183,7 @@
 //! println!("Current TAI time: {}", now);
 //! # }
 //! ```
-
+#![warn(missing_docs, missing_debug_implementations, unreachable_pub)]
 #![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
@@ -515,7 +515,7 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     /// The argument is the difference between TAI and UTC time in seconds
     /// (a.k.a. leap seconds) applicable at the date represented by the
     /// timestamp. For reference, this offset has been +37s since 2017-01-01, a
-    /// value which is to remain valid until at least 2024-12-28. See the
+    /// value which is to remain valid until at least 2026-12-28. See the
     /// [official IERS bulletin
     /// C](http://hpiers.obspm.fr/iers/bul/bulc/bulletinc.dat) for leap second
     /// announcements or the [IERS
@@ -650,7 +650,7 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     /// The last argument is the difference between TAI and UTC time in seconds
     /// (a.k.a. leap seconds) applicable at the date represented by the
     /// timestamp. For reference, this offset has been +37s since 2017-01-01, a
-    /// value which is to remain valid until at least 2024-12-28. See the
+    /// value which is to remain valid until at least 2026-12-28. See the
     /// [official IERS bulletin
     /// C](http://hpiers.obspm.fr/iers/bul/bulc/bulletinc.dat) for leap second
     /// announcements or the [IERS
@@ -718,15 +718,14 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
             (secs as i64, subsec_nanos - secs * NANOS_PER_SEC)
         };
 
-        if let Some(secs) = secs.checked_add(secs_carry) {
-            if let Some(secs) = secs.checked_add(leap_secs) {
-                if let Some(secs) = secs.checked_sub(EPOCH_REF) {
-                    return Ok(Self {
-                        secs,
-                        nanos: subsec_nanos,
-                    });
-                }
-            }
+        if let Some(secs) = secs.checked_add(secs_carry)
+            && let Some(secs) = secs.checked_add(leap_secs)
+            && let Some(secs) = secs.checked_sub(EPOCH_REF)
+        {
+            return Ok(Self {
+                secs,
+                nanos: subsec_nanos,
+            });
         }
 
         Err(OutOfRangeError(()))
@@ -737,7 +736,7 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     /// The last argument is the difference between TAI and UTC time in seconds
     /// (a.k.a. leap seconds) applicable at the date represented by the
     /// timestamp. For reference, this offset has been +37s since 2017-01-01, a
-    /// value which is to remain valid until at least 2024-12-28. See the
+    /// value which is to remain valid until at least 2026-12-28. See the
     /// [official IERS bulletin
     /// C](http://hpiers.obspm.fr/iers/bul/bulc/bulletinc.dat) for leap second
     /// announcements or the [IERS
@@ -803,7 +802,7 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     /// The argument is the difference between TAI and UTC time in seconds
     /// (a.k.a. leap seconds) applicable at the date represented by the
     /// timestamp. For reference, this offset has been +37s since 2017-01-01, a
-    /// value which is to remain valid until at least 2024-12-28. See the
+    /// value which is to remain valid until at least 2026-12-28. See the
     /// [official IERS bulletin
     /// C](http://hpiers.obspm.fr/iers/bul/bulc/bulletinc.dat) for leap second
     /// announcements or the [IERS
@@ -936,7 +935,7 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     /// The argument is the difference between TAI and UTC time in seconds
     /// (a.k.a. leap seconds) applicable at the date represented by the
     /// timestamp. For reference, this offset has been +37s since 2017-01-01, a
-    /// value which is to remain valid until at least 2024-12-28. See the
+    /// value which is to remain valid until at least 2026-12-28. See the
     /// [official IERS bulletin
     /// C](http://hpiers.obspm.fr/iers/bul/bulc/bulletinc.dat) for leap second
     /// announcements or the [IERS
@@ -1008,13 +1007,13 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     pub const fn to_tai_time<const OTHER_EPOCH_REF: i64>(
         &self,
     ) -> Option<TaiTime<OTHER_EPOCH_REF>> {
-        if let Some(secs) = EPOCH_REF.checked_sub(OTHER_EPOCH_REF) {
-            if let Some(secs) = secs.checked_add(self.secs) {
-                return Some(TaiTime {
-                    secs,
-                    nanos: self.nanos,
-                });
-            }
+        if let Some(secs) = EPOCH_REF.checked_sub(OTHER_EPOCH_REF)
+            && let Some(secs) = secs.checked_add(self.secs)
+        {
+            return Some(TaiTime {
+                secs,
+                nanos: self.nanos,
+            });
         }
 
         None
@@ -1025,7 +1024,7 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     /// The argument is the difference between TAI and UTC time in seconds
     /// (a.k.a. leap seconds) applicable at the date represented by the
     /// timestamp. For reference, this offset has been +37s since 2017-01-01, a
-    /// value which is to remain valid until at least 2024-12-28. See the
+    /// value which is to remain valid until at least 2026-12-28. See the
     /// [official IERS bulletin
     /// C](http://hpiers.obspm.fr/iers/bul/bulc/bulletinc.dat) for leap second
     /// announcements or the [IERS
@@ -1071,7 +1070,7 @@ impl<const EPOCH_REF: i64> TaiTime<EPOCH_REF> {
     /// The argument is the difference between TAI and UTC time in seconds
     /// (a.k.a. leap seconds) applicable at the date represented by the
     /// timestamp. For reference, this offset has been +37s since 2017-01-01, a
-    /// value which is to remain valid until at least 2024-12-28. See the
+    /// value which is to remain valid until at least 2026-12-28. See the
     /// [official IERS bulletin
     /// C](http://hpiers.obspm.fr/iers/bul/bulc/bulletinc.dat) for leap second
     /// announcements or the [IERS
@@ -1407,7 +1406,7 @@ impl<const EPOCH_REF: i64> fmt::Display for TaiTime<EPOCH_REF> {
                     let (new_n, digit) = split_last_digit(n);
                     n = new_n;
                     buffer[pos] = digit as u8 + 48; // ASCII/UTF8 codepoint for
-                                                    // numerals
+                    // numerals
                 }
 
                 write!(f, ".{}", from_utf8(&buffer[0..precision.min(9)]).unwrap())?;
@@ -2020,13 +2019,15 @@ mod tests {
         let schema = schema.as_object().unwrap();
         for field in &["secs", "nanos"] {
             assert!(schema.get("properties").unwrap().get(field).is_some());
-            assert!(schema
-                .get("required")
-                .unwrap()
-                .as_array()
-                .unwrap()
-                .iter()
-                .any(|a| a.as_str() == Some(field)));
+            assert!(
+                schema
+                    .get("required")
+                    .unwrap()
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|a| a.as_str() == Some(field))
+            );
         }
     }
 }
