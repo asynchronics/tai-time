@@ -88,6 +88,12 @@
 //! [`defmt::Format`](https://defmt.ferrous-systems.com/format) trait on
 //! `TaiTime` and related error types.
 //!
+//! ### JSON Schema
+//!
+//! Activating the `schemars` feature will derive the
+//! [`schemars::JsonSchema`](https://docs.rs/schemars/latest/schemars/) trait
+//! on `TaiTime`.
+//!  
 //! # Examples
 //!
 //! Basic usage:
@@ -162,13 +168,24 @@
 //! ```
 //! use tai_time::MonotonicTime;
 //!
+//! # #[cfg(all(
+//! #     feature = "tai_clock",
+//! #     any(
+//! #         target_os = "android",
+//! #         target_os = "emscripten",
+//! #         target_os = "fuchsia",
+//! #         target_os = "linux"
+//! #     )
+//! # ))]
+//! # {
 //! let now = MonotonicTime::now();
 //!
 //! println!("Current TAI time: {}", now);
+//! # }
 //! ```
 
 #![cfg_attr(not(feature = "std"), no_std)]
-#![cfg_attr(docsrs, feature(doc_auto_cfg))]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 
 mod date_time;
 mod errors;
@@ -338,6 +355,7 @@ pub type Tai1972Time = TaiTime<63_072_000>;
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct TaiTime<const EPOCH_REF: i64> {
     /// The number of whole seconds in the future (if positive) or in the past
     /// (if negative) of 1970-01-01 00:00:00 TAI.
@@ -1388,7 +1406,8 @@ impl<const EPOCH_REF: i64> fmt::Display for TaiTime<EPOCH_REF> {
                 for pos in (0..9).rev() {
                     let (new_n, digit) = split_last_digit(n);
                     n = new_n;
-                    buffer[pos] = digit as u8 + 48; // ASCII/UTF8 codepoint for numerals
+                    buffer[pos] = digit as u8 + 48; // ASCII/UTF8 codepoint for
+                                                    // numerals
                 }
 
                 write!(f, ".{}", from_utf8(&buffer[0..precision.min(9)]).unwrap())?;
@@ -1992,5 +2011,22 @@ mod tests {
         let t1: GpsTime = serde_json::from_str(&data).unwrap();
 
         assert_eq!(t0, t1);
+    }
+
+    #[cfg(feature = "schemars")]
+    #[test]
+    fn generate_json_schema() {
+        let schema = schemars::schema_for!(MonotonicTime);
+        let schema = schema.as_object().unwrap();
+        for field in &["secs", "nanos"] {
+            assert!(schema.get("properties").unwrap().get(field).is_some());
+            assert!(schema
+                .get("required")
+                .unwrap()
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|a| a.as_str() == Some(field)));
+        }
     }
 }

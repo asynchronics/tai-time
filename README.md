@@ -178,6 +178,12 @@ Activating the `defmt` feature will derive the
 [`defmt::Format`](https://defmt.ferrous-systems.com/format) trait on `TaiTime`
 and related error types.
 
+### JSON Schema
+
+Activating the `schemars` feature will derive the
+[`schemars::JsonSchema`](https://docs.rs/schemars/latest/schemars/) trait
+on `TaiTime`.
+
 ## License
 
 This software is licensed under the [Apache License, Version
