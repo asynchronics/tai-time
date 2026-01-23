@@ -5,10 +5,10 @@ name = "tai-time"
 # - Update CHANGELOG.md
 # - Update if necessary copyright notice in LICENSE-MIT
 # - Create a "vX.Y.Z" git tag
-version = "0.3.3"
-authors = ["Serge Barral <serge.barral@asynchronics.com>"]
-edition = "2021"
-rust-version = "1.64"
+version = "1.0.0"
+authors = ["Asynchronics and the tai-time Contributors"]
+edition = "2024"
+rust-version = "1.88.0"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/asynchronics/tai-time"
 readme = "README.md"
@@ -21,9 +21,13 @@ keywords = ["date", "time", "monotonic", "tai", "gps"]
 [dependencies]
 chrono = { version = "0.4.31", default-features = false, optional = true }
 schemars = { version = "1.2", optional = true }
-serde = { version = "1", default-features = false, features = ["derive"], optional = true }
-nix = { version = "0.26", default-features = false, features = ["time"], optional = true }
-defmt = { version = "0.3", optional = true }
+serde = { version = "1", default-features = false, features = [
+    "derive",
+], optional = true }
+nix = { version = "0.31", default-features = false, features = [
+    "time",
+], optional = true }
+defmt = { version = "1", optional = true }
 
 [dev-dependencies]
 serde_json = "1"
@@ -31,8 +35,6 @@ serde_json = "1"
 [features]
 default = ["std"]
 std = []
-# Note that the MSRV cannot be guaranteed when the following features are
-# activated since cargo resolver v2 ignores MSRV.
 chrono = ["dep:chrono"]
 schemars = ["dep:schemars"]
 serde = ["dep:serde"]

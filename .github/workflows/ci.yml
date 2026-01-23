@@ -12,6 +12,12 @@ jobs:
   check:
     name: Check
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        rust:
+          - stable
+          - 1.88.0
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
@@ -21,19 +27,6 @@ jobs:
 
       - name: Run cargo check
         run: cargo check --all-features
-
-  check-msrv:
-    name: Check MSRV
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout sources
-        uses: actions/checkout@v4
-
-      - name: Install toolchain
-        uses: dtolnay/rust-toolchain@1.64.0
-
-      - name: Run cargo check
-        run: cargo check # don't activate non-default features as they may break the MSRV
 
   check-no-std:
     name: Check (no-std)
