@@ -2,6 +2,7 @@
 
 - Add feature-gated `schemars::JsonSchema` trait derive on `TaiTime` ([#25]).
 - Move to Rust edition 2024 ([#26]).
+- Bump MSRV to Rust 1.88 ([#26]).
 - Bump dependencies (`defmt` is now on release `1`) ([#26]).
 - Minor doc udates ([#26]).
 
