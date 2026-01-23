@@ -88,6 +88,12 @@
 //! [`defmt::Format`](https://defmt.ferrous-systems.com/format) trait on
 //! `TaiTime` and related error types.
 //!
+//! ### JSON Schema
+//!
+//! Activating the `schemars` feature will derive the
+//! [`schemars::JsonSchema`](https://docs.rs/schemars/latest/schemars/) trait
+//! on `TaiTime`.
+//!  
 //! # Examples
 //!
 //! Basic usage:
@@ -162,9 +168,20 @@
 //! ```
 //! use tai_time::MonotonicTime;
 //!
+//! # #[cfg(all(
+//! #     feature = "tai_clock",
+//! #     any(
+//! #         target_os = "android",
+//! #         target_os = "emscripten",
+//! #         target_os = "fuchsia",
+//! #         target_os = "linux"
+//! #     )
+//! # ))]
+//! # {
 //! let now = MonotonicTime::now();
 //!
 //! println!("Current TAI time: {}", now);
+//! # }
 //! ```
 
 #![cfg_attr(not(feature = "std"), no_std)]
